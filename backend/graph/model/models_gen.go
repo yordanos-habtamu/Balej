@@ -4,6 +4,7 @@ package model
 
 import (
 	"time"
+	"github.com/99designs/gqlgen/graphql"
 )
 
 type Applicants struct {
@@ -40,10 +41,11 @@ type JobApplicantFilter struct {
 }
 
 type JobApplication struct {
-	JobApplicationID int32  `json:"jobApplicationId"`
-	JobID            int32  `json:"job_id"`
-	UserID           int32  `json:"userId"`
-	Proposal         string `json:"proposal"`
+	JobApplicationID int32          `json:"jobApplicationId"`
+	JobID            int32          `json:"job_id"`
+	UserID           int32          `json:"userId"`
+	Proposal         string         `json:"proposal"`
+	Cv               graphql.Upload `json:"cv"`
 }
 
 type JobFilter struct {
