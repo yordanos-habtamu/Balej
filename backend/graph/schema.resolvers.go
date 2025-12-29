@@ -352,6 +352,7 @@ func (r *queryResolver) Jobs(ctx context.Context) ([]*model.JobOffer, error) {
 	var result []*model.JobOffer
 	for _, job := range jobs {
 		result = append(result, &model.JobOffer{
+			JobID:            strconv.Itoa(int(job.ID)),
 			JobType:          job.Type,
 			Title:            job.Title,
 			Description:      job.Description,

@@ -4,14 +4,32 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
+    "github.com/joho/godotenv"
 	"github.com/yordanos-habtamu/GormWithGraphql/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"log"
 )
+
+
 
 // ConnectDB establishes a connection to the PostgreSQL database and sets up the schema
 func ConnectDB() (*gorm.DB, error) {
+
+	err := godotenv.Load()
+	if err != nil {
+	
+		err = godotenv.Load("../../.env")
+	}
+	if err != nil {
+		// Try loading from ../.env
+		err = godotenv.Load("../.env")
+	}
+
+	// If still error, check if critical env vars are set before failing
+	if err != nil && os.Getenv("DB_HOST") == "" {
+		log.Fatal("Error loading .env file: ", err)
+	}
 	host := os.Getenv("DB_HOST")
 	user := os.Getenv("DB_USER")
 	password := os.Getenv("DB_PASSWORD")
@@ -20,6 +38,7 @@ func ConnectDB() (*gorm.DB, error) {
 	sslmode := os.Getenv("DB_SSLMODE")
 
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s", host, user, password, dbname, port, sslmode)
+    fmt.Println(dsn)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
