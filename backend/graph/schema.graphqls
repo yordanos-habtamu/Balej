@@ -2,7 +2,7 @@
 #
 # https://gqlgen.com/getting-started/
 
-scalar upload
+scalar Upload
 scalar DateTime
 scalar Time
 input NewUser{
@@ -30,7 +30,8 @@ input JobApplication{
 	jobApplicationId: Int!    
   job_id:Int!
 	userId:Int! 
-  proposal:String!     
+  proposal:String!
+  cv: Upload!     
 }
 
 input Approval{

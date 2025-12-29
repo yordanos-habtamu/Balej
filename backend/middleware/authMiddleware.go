@@ -22,8 +22,7 @@ type GraphQLRequest struct {
 var OperationRoleConfig = map[string]string{
 	"Users": "admin",
 	"RemoveUsers":"admin",
-	"AddJobOffer": "admin",
-	
+	"AddJobOffer": "admin",	
 }
 
 

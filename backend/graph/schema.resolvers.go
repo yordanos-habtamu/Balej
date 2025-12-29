@@ -216,13 +216,19 @@ func (r *mutationResolver) ApplyToJob(ctx context.Context, input model.JobApplic
 		return nil, fmt.Errorf("failed to update job offer: %v", err)
 	}
 
+	// Upload CV to Cloudinary
+	cvURL, err := utils.UploadToCloudinary(input.Cv, "cvs")
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload CV: %v", err)
+	}
+
 	// Create job application
 	jobApplication := &models.JobApplicant{
 		JobOfferID: uint(input.JobID),
 		UserID:     uint(input.UserID),
 		AppliedAt:  time.Now(),
 		Status:     "pending",
-		Resume:     input.Proposal,
+		Resume:     cvURL,
 	}
 	log.Printf("Creating job application: %+v", jobApplication)
 	createdApplication, err := r.JobService.CreateApplication(jobApplication)
@@ -352,6 +358,7 @@ func (r *queryResolver) Jobs(ctx context.Context) ([]*model.JobOffer, error) {
 	var result []*model.JobOffer
 	for _, job := range jobs {
 		result = append(result, &model.JobOffer{
+			JobID:            strconv.Itoa(int(job.ID)),
 			JobType:          job.Type,
 			Title:            job.Title,
 			Description:      job.Description,

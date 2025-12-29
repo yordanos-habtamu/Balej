@@ -71,6 +71,7 @@ func main() {
 
 	// Add POST support for queries/mutations
 	srv.AddTransport(transport.POST{})
+	srv.AddTransport(transport.MultipartForm{})
 
 	// Setup router
 	r := mux.NewRouter()
