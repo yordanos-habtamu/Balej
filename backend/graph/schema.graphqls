@@ -115,6 +115,7 @@ input JobFilter {
 }
 type Query {
   users : [User!]!
+  user(id: ID!): User
   jobs : [JobOffer!]!
   jobsWithFilter(filter:JobFilter):[JobOffer!]!
   applicants:[Applicants!]!
