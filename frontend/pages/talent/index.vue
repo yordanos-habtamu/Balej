@@ -2,13 +2,25 @@
   <div class="min-h-screen w-full bg-gray-100">
     <div class="container mx-auto px-4 py-6">
       <!-- Search Bar -->
-      <div class="mb-6">
+      <div class="mb-6 flex ">
         <input 
           type="text" 
           v-model="searchTerm"
           placeholder="Search for something..." 
           class="w-full max-w-2xl mx-auto block border-2 border-black rounded-lg p-3 text-lg focus:outline-none focus:ring-2 focus:ring-black"
         >
+          <div class="flex justify-around items-center p-2">
+          <nuxt-link to="/talent/profile"><div class="h-10 w-10 rounded-full bg-white mx-2 hover:scale-105 hover:text-gray-300  transition-all ease-out duration-75">
+            <user-icon class="text-gray-500 h-7 w-7 translate-1"/>
+          </div></nuxt-link>
+          <nuxt-link to="/talent/notifications"><div class="h-10 w-10 rounded-full bg-white  mx-2 hover:scale-105 hover:text-gray-300 transition-all ease-out duration-75">
+            <bell-icon class="text-gray-500 h-7 w-7 translate-1"/>
+          </div></nuxt-link>
+        <div class="h-10 w-10 rounded-full bg-white  mx-2 hover:scale-105 hover:text-gray-300 transition-all ease-out duration-75">
+          <moon-icon class="text-gray-500 h-7 w-7 translate-1"/>
+         </div>
+
+        </div>
       </div>
 
       <!-- Main Content -->
@@ -92,12 +104,12 @@
         <!-- Job Listings -->
         <main class="flex-1">
           <div v-if="filteredJobs.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div 
+          <div 
               v-for="(job, index) in filteredJobs" 
               :key="index"
               class="bg-white border-2 border-black rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
             >
-              <div class="w-full h-32">
+              <nuxt-link :to="`/talent/job/${job.title}`"><div class="w-full h-32">
                 <img 
                   src="@/assets/painter.png" 
                   alt="Job Image" 
@@ -111,7 +123,9 @@
                 </div>
                 <p class="text-sm text-gray-600">{{ job.category }}</p>
               </div>
+              </nuxt-link>
             </div>
+          
           </div>
           <div v-else class="flex items-center justify-center h-64">
             <p class="text-lg text-black">No Jobs Available</p>

@@ -348,6 +348,28 @@ func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
 	return result, nil
 }
 
+// User is the resolver for the user field.
+func (r *queryResolver) User(ctx context.Context, id string) (*model.User, error) {
+	userID, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID")
+	}
+	user, err := r.UserService.FindByID(uint(userID))
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %v", err)
+	}
+	return &model.User{
+		ID:          strconv.Itoa(int(user.ID)),
+		FirstName:   user.FirstName,
+		LastName:    user.LastName,
+		PhoneNumber: user.PhoneNumber,
+		Address:     user.Address,
+		Email:       user.Email,
+		Role:        user.Role,
+		IsActive:    user.IsActive,
+	}, nil
+}
+
 // Jobs is the resolver for the jobs field.
 func (r *queryResolver) Jobs(ctx context.Context) ([]*model.JobOffer, error) {
 	defer func() {

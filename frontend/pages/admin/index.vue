@@ -10,9 +10,9 @@
           class="w-full max-w-2xl mx-auto block  rounded-3xl py-3  px-3 text-lg bg-white text-left focus:outline-none focus:ring-2 focus:ring-black"
         >
         <div class="flex justify-around items-center p-2">
-          <div class="h-10 w-10 rounded-full bg-white mx-2 hover:scale-105 hover:text-gray-300  transition-all ease-out duration-75">
+          <nuxt-link to="/admin/profile"><div class="h-10 w-10 rounded-full bg-white mx-2 hover:scale-105 hover:text-gray-300  transition-all ease-out duration-75">
             <user-icon class="text-gray-500 h-7 w-7 translate-1"/>
-          </div>
+          </div></nuxt-link>
           <div class="h-10 w-10 rounded-full bg-white  mx-2 hover:scale-105 hover:text-gray-300 transition-all ease-out duration-75">
             <bell-icon class="text-gray-500 h-7 w-7 translate-1"/>
           </div>
