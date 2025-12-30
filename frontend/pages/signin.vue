@@ -125,7 +125,7 @@ const login = async () => {
       token.value = result.data.LoginUser.token
       tokenCookie.value = token.value
 
-      // ✅ Decode and save to Pinia store
+      
       const decoded: any = jwtDecode(token.value)
       const auth = useAuthStore()
       console.log(decoded)
