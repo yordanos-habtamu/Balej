@@ -4,6 +4,7 @@ package model
 
 import (
 	"time"
+
 	"github.com/99designs/gqlgen/graphql"
 )
 
@@ -113,13 +114,14 @@ type Subscription struct {
 }
 
 type User struct {
-	ID          string `json:"id"`
-	FirstName   string `json:"first_name"`
-	LastName    string `json:"last_name"`
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	PhoneNumber string `json:"phone_number"`
-	Address     string `json:"address"`
-	Role        string `json:"role"`
-	IsActive    bool   `json:"is_active"`
+	ID          string  `json:"id"`
+	FirstName   string  `json:"first_name"`
+	LastName    string  `json:"last_name"`
+	Email       string  `json:"email"`
+	Password    string  `json:"password"`
+	PhoneNumber string  `json:"phone_number"`
+	Address     string  `json:"address"`
+	Role        string  `json:"role"`
+	Cv          *string `json:"cv,omitempty"`
+	IsActive    bool    `json:"is_active"`
 }

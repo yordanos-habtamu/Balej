@@ -14,6 +14,7 @@ type User struct {
 	PhoneNumber string    `json:"phone_number" gorm:"not null"`
 	Address     string    `json:"address" gorm:"not null"`
 	Role        string    `json:"role" gorm:"type:user_role;default:'talent'"`
+	CV          string    `json:"cv"`
 	IsActive    bool      `json:"is_active" gorm:"default:true"`
 }
 

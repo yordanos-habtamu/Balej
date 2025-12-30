@@ -73,6 +73,7 @@ func (r *mutationResolver) LoginUser(ctx context.Context, input *model.LoginInpu
 		PhoneNumber: user.PhoneNumber,
 		Address:     user.Address,
 		Role:        user.Role,
+		Cv:          &user.CV,
 		IsActive:    true,
 	}
 
@@ -114,6 +115,7 @@ func (r *mutationResolver) Register(ctx context.Context, input model.NewUser) (*
 		PhoneNumber: userModel.PhoneNumber,
 		Address:     userModel.Address,
 		Role:        userModel.Role,
+		Cv:          &userModel.CV,
 		IsActive:    userModel.IsActive,
 	}
 
@@ -169,6 +171,7 @@ func (r *mutationResolver) AddJobOffer(ctx context.Context, input model.NewJobOf
 			PhoneNumber: user.PhoneNumber,
 			Address:     user.Address,
 			Role:        user.Role,
+			Cv:          &user.CV,
 			IsActive:    user.IsActive,
 		},
 		Category:         jobOffer.Category,
@@ -248,6 +251,7 @@ func (r *mutationResolver) ApplyToJob(ctx context.Context, input model.JobApplic
 			PhoneNumber: user.PhoneNumber,
 			Address:     user.Address,
 			Role:        user.Role,
+			Cv:          &user.CV,
 			IsActive:    user.IsActive,
 		},
 	}
@@ -331,13 +335,14 @@ func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
 	var result []*model.User
 	for _, u := range users {
 		result = append(result, &model.User{
-			ID:        strconv.Itoa(int(u.ID)),
-			FirstName: u.FirstName,
-			LastName:  u.LastName,
+			ID:          strconv.Itoa(int(u.ID)),
+			FirstName:   u.FirstName,
+			LastName:    u.LastName,
 			PhoneNumber: u.PhoneNumber,
-			Address: u.Address,
-			Email:     u.Email,
-			Role:u.Role,
+			Address:     u.Address,
+			Email:       u.Email,
+			Role:        u.Role,
+			Cv:          &u.CV,
 		})
 	}
 	return result, nil
