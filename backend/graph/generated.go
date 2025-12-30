@@ -120,6 +120,7 @@ type ComplexityRoot struct {
 
 	User struct {
 		Address     func(childComplexity int) int
+		Cv          func(childComplexity int) int
 		Email       func(childComplexity int) int
 		FirstName   func(childComplexity int) int
 		ID          func(childComplexity int) int
@@ -498,6 +499,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.User.Address(childComplexity), true
+
+	case "User.cv":
+		if e.complexity.User.Cv == nil {
+			break
+		}
+
+		return e.complexity.User.Cv(childComplexity), true
 
 	case "User.email":
 		if e.complexity.User.Email == nil {
@@ -1452,6 +1460,8 @@ func (ec *executionContext) fieldContext_ApplicationResponse_user(_ context.Cont
 				return ec.fieldContext_User_address(ctx, field)
 			case "role":
 				return ec.fieldContext_User_role(ctx, field)
+			case "cv":
+				return ec.fieldContext_User_cv(ctx, field)
 			case "is_active":
 				return ec.fieldContext_User_is_active(ctx, field)
 			}
@@ -1604,6 +1614,8 @@ func (ec *executionContext) fieldContext_AuthPayload_user(_ context.Context, fie
 				return ec.fieldContext_User_address(ctx, field)
 			case "role":
 				return ec.fieldContext_User_role(ctx, field)
+			case "cv":
+				return ec.fieldContext_User_cv(ctx, field)
 			case "is_active":
 				return ec.fieldContext_User_is_active(ctx, field)
 			}
@@ -1888,6 +1900,8 @@ func (ec *executionContext) fieldContext_JobOffer_offeredByuser(_ context.Contex
 				return ec.fieldContext_User_address(ctx, field)
 			case "role":
 				return ec.fieldContext_User_role(ctx, field)
+			case "cv":
+				return ec.fieldContext_User_cv(ctx, field)
 			case "is_active":
 				return ec.fieldContext_User_is_active(ctx, field)
 			}
@@ -2260,6 +2274,8 @@ func (ec *executionContext) fieldContext_Mutation_createUser(ctx context.Context
 				return ec.fieldContext_User_address(ctx, field)
 			case "role":
 				return ec.fieldContext_User_role(ctx, field)
+			case "cv":
+				return ec.fieldContext_User_cv(ctx, field)
 			case "is_active":
 				return ec.fieldContext_User_is_active(ctx, field)
 			}
@@ -2396,6 +2412,8 @@ func (ec *executionContext) fieldContext_Mutation_Register(ctx context.Context, 
 				return ec.fieldContext_User_address(ctx, field)
 			case "role":
 				return ec.fieldContext_User_role(ctx, field)
+			case "cv":
+				return ec.fieldContext_User_cv(ctx, field)
 			case "is_active":
 				return ec.fieldContext_User_is_active(ctx, field)
 			}
@@ -2790,6 +2808,8 @@ func (ec *executionContext) fieldContext_Query_users(_ context.Context, field gr
 				return ec.fieldContext_User_address(ctx, field)
 			case "role":
 				return ec.fieldContext_User_role(ctx, field)
+			case "cv":
+				return ec.fieldContext_User_cv(ctx, field)
 			case "is_active":
 				return ec.fieldContext_User_is_active(ctx, field)
 			}
@@ -3653,6 +3673,47 @@ func (ec *executionContext) _User_role(ctx context.Context, field graphql.Collec
 }
 
 func (ec *executionContext) fieldContext_User_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _User_cv(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_User_cv(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Cv, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_User_cv(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "User",
 		Field:      field,
@@ -5742,7 +5803,7 @@ func (ec *executionContext) unmarshalInputJobApplication(ctx context.Context, ob
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"jobApplicationId", "job_id", "userId", "proposal"}
+	fieldsInOrder := [...]string{"jobApplicationId", "job_id", "userId", "proposal", "cv"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -5777,6 +5838,13 @@ func (ec *executionContext) unmarshalInputJobApplication(ctx context.Context, ob
 				return it, err
 			}
 			it.Proposal = data
+		case "cv":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("cv"))
+			data, err := ec.unmarshalNUpload2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚐUpload(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Cv = data
 		}
 	}
 
@@ -6698,6 +6766,8 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "cv":
+			out.Values[i] = ec._User_cv(ctx, field, obj)
 		case "is_active":
 			out.Values[i] = ec._User_is_active(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -7351,6 +7421,22 @@ func (ec *executionContext) unmarshalNTime2timeᚐTime(ctx context.Context, v an
 func (ec *executionContext) marshalNTime2timeᚐTime(ctx context.Context, sel ast.SelectionSet, v time.Time) graphql.Marshaler {
 	_ = sel
 	res := graphql.MarshalTime(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
+}
+
+func (ec *executionContext) unmarshalNUpload2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚐUpload(ctx context.Context, v any) (graphql.Upload, error) {
+	res, err := graphql.UnmarshalUpload(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNUpload2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚐUpload(ctx context.Context, sel ast.SelectionSet, v graphql.Upload) graphql.Marshaler {
+	_ = sel
+	res := graphql.MarshalUpload(v)
 	if res == graphql.Null {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")

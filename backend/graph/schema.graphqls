@@ -80,6 +80,7 @@ type User{
   phone_number:String!
   address:String!
   role:String!
+  cv: String
   is_active: Boolean!
 }
 
