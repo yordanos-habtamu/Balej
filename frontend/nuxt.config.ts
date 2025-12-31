@@ -1,7 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate : '2025-08-27',
-  modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt', '@nuxtjs/google-fonts'],
+  modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt', '@nuxtjs/google-fonts','pinia-plugin-persistedstate/nuxt'],
   googleFonts: {
     families: {
       Roboto: [100, 300, 400, 500, 700, 900],
