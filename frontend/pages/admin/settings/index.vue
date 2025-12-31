@@ -1,221 +1,457 @@
 <template>
-  <div :class="{'dark': themeStore.isDarkMode}" class="min-h-screen transition-colors duration-300" :style="pageStyle">
-    <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
-      <div class="max-w-4xl mx-auto">
-        <!-- Header -->
-        <div class="mb-8 flex items-center justify-between">
-          <div>
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
-            <p class="mt-2 text-gray-600 dark:text-gray-400">Manage your dashboard preferences and system configurations.</p>
-          </div>
-          <nuxt-link to="/admin/profile" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
-            </svg>
-            Back to Profile
-          </nuxt-link>
+  <div class="min-h-screen bg-[#020205] text-white font-sans overflow-hidden flex selection:bg-cyan-500/30">
+    
+    <aside class="w-72 border-r border-white/5 bg-[#050508] flex flex-col shrink-0 z-20">
+      <div class="p-8 border-b border-white/10">
+        <div class="flex items-center gap-2 mb-1">
+          <div class="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse"></div>
+          <p class="text-[9px] font-mono text-cyan-500 tracking-[0.3em] uppercase italic">Admin_Protocol</p>
         </div>
-
-        <div class="grid grid-cols-1 gap-8">
-          <!-- Appearance Settings -->
-          <div class="bg-white dark:bg-gray-800 shadow rounded-xl overflow-hidden">
-            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                </svg>
-                Appearance
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Customize the look and feel of your dashboard.</p>
-            </div>
-            <div class="p-6 space-y-6">
-              <!-- Dark Mode Toggle -->
-              <div class="flex items-center justify-between">
-                <div>
-                  <h3 class="text-base font-medium text-gray-900 dark:text-white">Dark Mode</h3>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">Switch between light and dark themes.</p>
-                </div>
-                <button 
-                  @click="themeStore.toggleDarkMode"
-                  :class="themeStore.isDarkMode ? 'bg-purple-600' : 'bg-gray-200'"
-                  class="relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                >
-                  <span 
-                    :class="themeStore.isDarkMode ? 'translate-x-5' : 'translate-x-0'"
-                    class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"
-                  ></span>
-                </button>
-              </div>
-
-              <!-- Color Theme -->
-              <div>
-                <h3 class="text-base font-medium text-gray-900 dark:text-white mb-3">Accent Color</h3>
-                <div class="flex space-x-4">
-                  <button 
-                    v-for="color in ['blue', 'green', 'purple', 'red', 'orange', 'teal']" 
-                    :key="color"
-                    @click="themeStore.setPrimaryColor(color)"
-                    class="w-10 h-10 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-transform hover:scale-110 flex items-center justify-center"
-                    :class="[`bg-${color}-500`, themeStore.primaryColor === color ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-white scale-110' : '']"
-                  >
-                    <svg v-if="themeStore.primaryColor === color" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Notifications & Alerts -->
-          <div class="bg-white dark:bg-gray-800 shadow rounded-xl overflow-hidden">
-            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                Notifications
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage how you receive alerts.</p>
-            </div>
-            <div class="p-6 space-y-4">
-               <div class="flex items-center justify-between">
-                <div>
-                  <h3 class="text-base font-medium text-gray-900 dark:text-white">Enable Notifications</h3>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">Receive system alerts and updates.</p>
-                </div>
-                <button 
-                  @click="themeStore.toggleNotifications"
-                  :class="themeStore.notificationsEnabled ? 'bg-green-500' : 'bg-gray-200'"
-                  class="relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  <span 
-                    :class="themeStore.notificationsEnabled ? 'translate-x-5' : 'translate-x-0'"
-                    class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"
-                  ></span>
-                </button>
-              </div>
-              <div class="flex items-center justify-between opacity-75">
-                <div>
-                  <h3 class="text-base font-medium text-gray-900 dark:text-white">Email Digest</h3>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">Receive a daily summary of activities.</p>
-                </div>
-                <input type="checkbox" class="h-5 w-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" checked disabled>
-              </div>
-            </div>
-          </div>
-
-          <!-- Security Settings -->
-          <div class="bg-white dark:bg-gray-800 shadow rounded-xl overflow-hidden">
-            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                Security
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Update password and secure your account.</p>
-            </div>
-            <div class="p-6 space-y-6">
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">New Password</label>
-                  <input type="password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border" placeholder="••••••••">
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Confirm Password</label>
-                  <input type="password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border" placeholder="••••••••">
-                </div>
-              </div>
-              <div class="flex justify-end">
-                <button class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium">
-                  Update Password
-                </button>
-              </div>
-              
-              <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
-                 <div class="flex items-center justify-between">
-                  <div>
-                    <h3 class="text-base font-medium text-gray-900 dark:text-white">Two-Factor Authentication</h3>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Add an extra layer of security.</p>
-                  </div>
-                  <button class="text-blue-600 hover:text-blue-800 font-medium text-sm">Enable 2FA</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-           <!-- System Preferences -->
-          <div class="bg-white dark:bg-gray-800 shadow rounded-xl overflow-hidden">
-            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                System Preferences
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Global system settings.</p>
-            </div>
-            <div class="p-6 space-y-6">
-               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Language</label>
-                  <select 
-                    v-model="themeStore.language"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border"
-                  >
-                    <option value="en">English</option>
-                    <option value="es">Spanish</option>
-                    <option value="fr">French</option>
-                    <option value="de">German</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Timezone</label>
-                  <select class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border">
-                    <option>UTC (GMT+00:00)</option>
-                    <option>EST (GMT-05:00)</option>
-                    <option>PST (GMT-08:00)</option>
-                    <option>CET (GMT+01:00)</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <button class="text-red-600 hover:text-red-800 text-sm font-medium flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                      Clear System Cache
-                  </button>
-                  <button class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 text-sm font-medium flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Export Data
-                  </button>
-              </div>
-            </div>
-          </div>
-
-        </div>
+        <h2 class="text-xl font-black italic uppercase tracking-tighter">System_Config</h2>
       </div>
-    </div>
+      
+      <nav class="flex-1 py-4 overflow-y-auto custom-scrollbar">
+        <div v-for="group in menuGroups" :key="group.title" class="mb-6">
+          <p class="px-8 text-[8px] font-mono text-gray-600 uppercase tracking-[0.4em] mb-3">{{ group.title }}</p>
+          <button 
+            v-for="tab in group.items" :key="tab.id"
+            @click="activeTab = tab.id"
+            :class="['w-full flex items-center px-8 py-3 gap-4 transition-all group', 
+                     activeTab === tab.id ? 'bg-cyan-500/10 text-cyan-500 border-r-2 border-cyan-500' : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.02]']"
+          >
+            <span class="text-[10px] font-black uppercase tracking-[0.15em]">{{ tab.label }}</span>
+          </button>
+        </div>
+      </nav>
+
+      <div class="p-6 border-t border-white/5 bg-black/40">
+        <button @click="triggerBackup" class="w-full py-4 border border-white/10 text-[9px] font-mono uppercase text-gray-400 hover:bg-white/5 hover:text-white transition-all">
+          Master_Snapshot.bak
+        </button>
+      </div>
+    </aside>
+
+    <main class="flex-1 overflow-y-auto custom-scrollbar relative bg-[#020205]">
+      <div class="fixed inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(0,243,255,0.01),transparent)] pointer-events-none"></div>
+
+      <div class="relative z-10 p-16 max-w-5xl mx-auto">
+        
+        <section v-if="activeTab === 'theme'" class="space-y-12 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8">
+            <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">Visual_Aesthetics</h1>
+            <p class="text-xs font-mono text-gray-500 uppercase tracking-widest italic">UI & Neural Interface Sync</p>
+          </header>
+
+          <div class="bg-white/[0.02] border border-white/5 p-10">
+             <h3 class="text-[10px] font-mono text-cyan-500 uppercase tracking-[0.4em] mb-8">>> Accent_Hex_Sync</h3>
+             <div class="flex gap-4">
+               <button v-for="color in themeColors" :key="color" @click="themeStore.setAccentColor(color)"
+                 class="w-16 h-16 border border-white/10 flex items-center justify-center relative hover:scale-105 transition-all">
+                 <div class="absolute inset-0 opacity-10" :style="{ backgroundColor: color }"></div>
+                 <div class="w-5 h-5" :style="{ backgroundColor: color, boxShadow: `0 0 20px ${color}` }"
+                      :class="themeStore.accentColor === color ? 'scale-125 border-2 border-white' : 'scale-75'"></div>
+               </button>
+             </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'privacy'" class="space-y-8 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8">
+            <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">GDPR_Vault</h1>
+            <p class="text-xs font-mono text-gray-500 uppercase tracking-widest italic">Data Privacy & Regulatory Compliance</p>
+          </header>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="p-8 border border-white/5 bg-white/[0.01] space-y-6">
+              <h3 class="text-[10px] font-mono text-white uppercase tracking-widest">Retention_Policy</h3>
+              <div class="space-y-4">
+                <p class="text-[9px] text-gray-500 uppercase leading-relaxed italic">Automatically purge candidate records after inactivity period.</p>
+                <select class="w-full bg-black border border-white/10 p-4 text-[10px] font-mono uppercase text-white outline-none focus:border-cyan-500">
+                  <option>6_MONTHS (EU_GDPR_STRICT)</option>
+                  <option>12_MONTHS (GLOBAL_DEFAULT)</option>
+                  <option>24_MONTHS (US_RECORDS_ACT)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="p-8 border border-white/5 bg-white/[0.01] space-y-6">
+              <h3 class="text-[10px] font-mono text-white uppercase tracking-widest">DSAR_Automation</h3>
+              <div class="flex items-center justify-between py-2 border-b border-white/5" v-for="opt in gdprOptions" :key="opt.id">
+                <span class="text-[9px] font-mono text-gray-500 uppercase">{{ opt.label }}</span>
+                <button @click="opt.state = !opt.state" :class="opt.state ? 'text-cyan-500' : 'text-gray-800'" class="text-[10px] font-mono font-bold">{{ opt.state ? '[ACTIVE]' : '[INACTIVE]' }}</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-8 border border-white/5 bg-white/[0.02]">
+            <h3 class="text-[10px] font-mono text-cyan-500 uppercase tracking-widest mb-4">Export_Governance</h3>
+            <div class="flex flex-wrap gap-4">
+              <button class="px-6 py-3 border border-white/10 text-[9px] font-mono uppercase text-gray-500 hover:text-white hover:bg-white/5 transition-all">Download_PII_Audit.json</button>
+              <button class="px-6 py-3 border border-white/10 text-[9px] font-mono uppercase text-gray-500 hover:text-white hover:bg-white/5 transition-all">Generate_Compliance_Report</button>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'notifications'" class="space-y-8 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8">
+            <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">Comms_Relay</h1>
+            <p class="text-xs font-mono text-gray-500 uppercase tracking-widest italic">Themed Template Engine (Email/SMS)</p>
+          </header>
+
+          <div class="grid grid-cols-1 gap-4">
+            <div v-for="template in emailTemplates" :key="template.name" class="p-8 bg-white/[0.02] border border-white/5 group hover:border-cyan-500/30 transition-all">
+              <div class="flex justify-between items-start mb-6">
+                <div>
+                  <span class="px-2 py-0.5 border border-cyan-500/30 text-cyan-500 text-[8px] font-mono uppercase mr-3">{{ template.channel }}</span>
+                  <span class="text-[8px] font-mono text-gray-600 uppercase">{{ template.trigger }}</span>
+                </div>
+                <div class="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+              </div>
+              <h4 class="text-xl font-black uppercase italic text-white mb-6 tracking-tight">{{ template.name }}</h4>
+              <div class="flex gap-4">
+                <button class="flex-1 py-3 bg-cyan-500 text-black text-[10px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all">
+                  Edit_Protocol
+                </button>
+                <button class="flex-1 py-3 border border-cyan-500/50 text-cyan-500 text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500/10 transition-all">
+                  Test_Relay
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'logs'" class="space-y-8 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8 flex justify-between items-end">
+            <div>
+              <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">Audit_Logs</h1>
+              <p class="text-xs font-mono text-gray-500 uppercase tracking-widest">Forensic Activity Stream</p>
+            </div>
+          </header>
+
+          <div class="bg-black/80 border border-white/10 p-8 h-[500px] overflow-y-auto font-mono text-[10px] space-y-3 custom-scrollbar" ref="logContainer">
+            <div v-for="(log, idx) in systemLogs" :key="idx" class="flex gap-4 group py-1 border-b border-white/[0.02]">
+              <span class="text-gray-700 shrink-0">[{{ log.time }}]</span>
+              <span :class="getLogColor(log.type)" class="shrink-0 w-20">[{{ log.type.toUpperCase() }}]</span>
+              <span class="text-gray-400 italic">{{ log.message }}</span>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'general'" class="space-y-12 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8">
+            <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">Core_Identity</h1>
+            <p class="text-xs font-mono text-gray-500 uppercase tracking-widest italic">Global Site Configuration</p>
+          </header>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="space-y-6">
+              <div class="space-y-2">
+                <label class="text-[9px] font-mono text-cyan-500 uppercase tracking-widest">Site_Title</label>
+                <input v-model="generalSettings.siteTitle" type="text" class="w-full bg-white/5 border border-white/10 p-4 text-xs font-mono uppercase outline-none focus:border-cyan-500 transition-all">
+              </div>
+              <div class="space-y-2">
+                <label class="text-[9px] font-mono text-cyan-500 uppercase tracking-widest">Support_Uplink_Email</label>
+                <input v-model="generalSettings.supportEmail" type="email" class="w-full bg-white/5 border border-white/10 p-4 text-xs font-mono outline-none focus:border-cyan-500 transition-all">
+              </div>
+            </div>
+            <div class="space-y-6">
+              <div class="p-8 border border-white/5 bg-white/[0.01] flex flex-col items-center justify-center gap-4">
+                <div class="w-20 h-20 border border-dashed border-white/20 flex items-center justify-center text-gray-600 text-[10px] font-mono uppercase">Logo_Slot</div>
+                <button class="text-[9px] font-mono text-cyan-500 uppercase hover:underline">Upload_New_Vector</button>
+              </div>
+              <div class="flex items-center justify-between p-4 border border-white/5 bg-white/[0.01]">
+                <span class="text-[9px] font-mono text-gray-500 uppercase">Maintenance_Mode</span>
+                <button @click="generalSettings.maintenanceMode = !generalSettings.maintenanceMode" 
+                        :class="generalSettings.maintenanceMode ? 'text-red-500' : 'text-gray-700'" class="text-[10px] font-mono font-black">
+                  {{ generalSettings.maintenanceMode ? '[OFFLINE]' : '[ONLINE]' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'job-logic'" class="space-y-12 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8">
+            <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">Market_Logic</h1>
+            <p class="text-xs font-mono text-gray-500 uppercase tracking-widest italic">Job Board Algorithms & Rules</p>
+          </header>
+
+          <div class="space-y-8">
+            <div class="p-8 border border-white/5 bg-white/[0.01] flex items-center justify-between">
+              <div>
+                <h4 class="text-sm font-black uppercase italic mb-1">Auto_Approve_Listings</h4>
+                <p class="text-[9px] text-gray-600 uppercase font-mono">Bypass manual moderation for verified clients</p>
+              </div>
+              <button @click="jobSettings.autoApprove = !jobSettings.autoApprove" 
+                      :class="jobSettings.autoApprove ? 'bg-cyan-500 text-black' : 'bg-white/5 text-gray-500'" 
+                      class="px-6 py-2 text-[9px] font-black uppercase tracking-widest transition-all">
+                {{ jobSettings.autoApprove ? 'ENABLED' : 'DISABLED' }}
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div class="p-8 border border-white/5 bg-white/[0.01] space-y-4">
+                <label class="text-[9px] font-mono text-cyan-500 uppercase tracking-widest">Default_Listing_Duration</label>
+                <div class="flex items-center gap-4">
+                  <input v-model="jobSettings.defaultDuration" type="number" class="w-24 bg-black border border-white/10 p-3 text-xs font-mono outline-none focus:border-cyan-500">
+                  <span class="text-[9px] font-mono text-gray-600 uppercase">Solar_Days</span>
+                </div>
+              </div>
+              <div class="p-8 border border-white/5 bg-white/[0.01] space-y-4">
+                <label class="text-[9px] font-mono text-cyan-500 uppercase tracking-widest">Featured_Boost_Multiplier</label>
+                <select v-model="jobSettings.boostMultiplier" class="w-full bg-black border border-white/10 p-3 text-xs font-mono uppercase outline-none focus:border-cyan-500">
+                  <option value="1.5">1.5x Visibility</option>
+                  <option value="2.0">2.0x Visibility</option>
+                  <option value="5.0">5.0x Visibility (Extreme)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'payments'" class="space-y-12 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8">
+            <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">Fiscal_Gateways</h1>
+            <p class="text-xs font-mono text-gray-500 uppercase tracking-widest italic">Revenue & Transaction Protocols</p>
+          </header>
+
+          <div class="space-y-6">
+            <div v-for="gateway in paymentGateways" :key="gateway.id" class="p-8 border border-white/5 bg-white/[0.01] group hover:border-cyan-500/20 transition-all">
+              <div class="flex justify-between items-center mb-8">
+                <div class="flex items-center gap-4">
+                  <div class="w-10 h-10 bg-white/5 flex items-center justify-center font-black italic text-lg">{{ gateway.name[0] }}</div>
+                  <h3 class="text-xl font-black uppercase italic tracking-tight">{{ gateway.name }}</h3>
+                </div>
+                <button @click="gateway.enabled = !gateway.enabled" 
+                        :class="gateway.enabled ? 'text-cyan-500' : 'text-gray-800'" class="text-[10px] font-mono font-black">
+                  {{ gateway.enabled ? '[ACTIVE]' : '[INACTIVE]' }}
+                </button>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6" v-if="gateway.enabled">
+                <div class="space-y-2">
+                  <label class="text-[8px] font-mono text-gray-600 uppercase tracking-widest">Public_Key</label>
+                  <input type="password" value="pk_test_************************" class="w-full bg-black border border-white/10 p-3 text-[10px] font-mono outline-none focus:border-cyan-500">
+                </div>
+                <div class="space-y-2">
+                  <label class="text-[8px] font-mono text-gray-600 uppercase tracking-widest">Secret_Hash</label>
+                  <input type="password" value="sk_test_************************" class="w-full bg-black border border-white/10 p-3 text-[10px] font-mono outline-none focus:border-cyan-500">
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'security'" class="space-y-12 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8">
+            <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">Defense_Grid</h1>
+            <p class="text-xs font-mono text-gray-500 uppercase tracking-widest italic">System Hardening & Access Control</p>
+          </header>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="p-8 border border-white/5 bg-white/[0.01] space-y-6">
+              <h3 class="text-[10px] font-mono text-cyan-500 uppercase tracking-widest">Multi_Factor_Auth</h3>
+              <p class="text-[9px] text-gray-500 uppercase font-mono leading-relaxed">Enforce hardware-level 2FA for all administrative nodes.</p>
+              <button @click="securitySettings.enforce2FA = !securitySettings.enforce2FA" 
+                      class="w-full py-4 border border-cyan-500/30 text-cyan-500 text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500/10 transition-all">
+                {{ securitySettings.enforce2FA ? 'ENFORCEMENT_ACTIVE' : 'ENABLE_ENFORCEMENT' }}
+              </button>
+            </div>
+
+            <div class="p-8 border border-white/5 bg-white/[0.01] space-y-6">
+              <h3 class="text-[10px] font-mono text-cyan-500 uppercase tracking-widest">Session_Persistence</h3>
+              <div class="space-y-4">
+                <label class="text-[8px] text-gray-600 uppercase">Auto_Logout_Threshold (Minutes)</label>
+                <input v-model="securitySettings.sessionTimeout" type="number" class="w-full bg-black border border-white/10 p-4 text-xs font-mono outline-none focus:border-cyan-500">
+              </div>
+            </div>
+
+            <div class="md:col-span-2 p-8 border border-white/5 bg-white/[0.01] space-y-6">
+              <h3 class="text-[10px] font-mono text-cyan-500 uppercase tracking-widest">IP_Whitelisting</h3>
+              <div class="flex gap-4">
+                <input type="text" placeholder="0.0.0.0" class="flex-1 bg-black border border-white/10 p-4 text-xs font-mono outline-none focus:border-cyan-500">
+                <button class="px-8 bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500 transition-all">Authorize_IP</button>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span v-for="ip in securitySettings.whitelistedIPs" :key="ip" class="px-3 py-1 bg-white/5 text-[9px] font-mono text-gray-500 uppercase flex items-center gap-2">
+                  {{ ip }} <button class="hover:text-red-500">✕</button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="activeTab === 'webhooks'" class="space-y-12 animate-in fade-in duration-500">
+          <header class="border-b border-white/5 pb-8">
+            <h1 class="text-6xl font-black italic uppercase tracking-tighter mb-4 text-cyan-500">Neural_Outbound</h1>
+            <p class="text-xs font-mono text-gray-500 uppercase tracking-widest italic">External System Synchronization</p>
+          </header>
+
+          <div class="space-y-6">
+            <div v-for="webhook in webhooks" :key="webhook.id" class="p-8 border border-white/5 bg-white/[0.01] flex justify-between items-center group">
+              <div>
+                <h4 class="text-lg font-black uppercase italic mb-1">{{ webhook.target }}</h4>
+                <p class="text-[9px] text-gray-600 font-mono uppercase">{{ webhook.url }}</p>
+                <div class="flex gap-4 mt-4">
+                  <span v-for="event in webhook.events" :key="event" class="text-[7px] font-mono text-cyan-500/50 uppercase border border-cyan-500/20 px-2 py-0.5">{{ event }}</span>
+                </div>
+              </div>
+              <div class="flex gap-4">
+                <button class="p-3 border border-white/10 hover:border-cyan-500 transition-all group-hover:bg-white/5">
+                  <span class="text-[10px] font-mono text-gray-500 group-hover:text-white uppercase">Ping</span>
+                </button>
+                <button class="p-3 border border-white/10 hover:border-red-500 transition-all group-hover:bg-red-500/10">
+                  <span class="text-[10px] font-mono text-gray-500 group-hover:text-red-500 uppercase">Delete</span>
+                </button>
+              </div>
+            </div>
+            <button class="w-full py-8 border border-dashed border-white/10 text-[10px] font-black uppercase tracking-[0.5em] text-gray-600 hover:border-cyan-500 hover:text-cyan-500 transition-all bg-white/[0.01]">
+              Initialize_New_Uplink
+            </button>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <transition name="toast">
+      <div v-if="showToast" class="fixed bottom-10 right-10 bg-black border border-cyan-500 px-10 py-5 z-[100] shadow-[0_0_40px_rgba(0,243,255,0.1)]">
+        <p class="text-[10px] font-mono text-cyan-500 uppercase tracking-[0.2em] font-black">{{ toastMsg }}</p>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, nextTick } from 'vue'
 import { useThemeStore } from '~/stores/theme'
-import { computed } from 'vue'
 
 const themeStore = useThemeStore()
+const activeTab = ref('theme')
+const showToast = ref(false)
+const toastMsg = ref('')
+const logContainer = ref<HTMLElement | null>(null)
 
-// Computed property to dynamically generate styles based on primary color
-const pageStyle = computed(() => {
-    // This is a simplified way to handle dynamic colors. 
-    // In a real app with Tailwind, you might map 'blue' to specific hex codes or use CSS variables.
-    // For now, we rely on the Tailwind classes like bg-blue-500 which are dynamically applied in the template.
-    return {}
+const themeColors = ['#00f3ff', '#ff0055', '#7000ff', '#00ff66', '#ffaa00']
+const passFields = ref({ old: '', new: '' })
+
+const menuGroups = [
+  {
+    title: 'Core_Infrastructure',
+    items: [
+      { id: 'general', label: 'Core Identity' },
+      { id: 'theme', label: 'Neural Aesthetics' },
+      { id: 'security', label: 'Defense Grid' },
+      { id: 'logs', label: 'Forensic Audit' }
+    ]
+  },
+  {
+    title: 'Recruitment_Ops',
+    items: [
+      { id: 'job-logic', label: 'Market Logic' },
+      { id: 'notifications', label: 'Comms Templates' },
+      { id: 'payments', label: 'Fiscal Gateways' },
+      { id: 'privacy', label: 'GDPR & Compliance' },
+      { id: 'webhooks', label: 'Neural Outbound' }
+    ]
+  }
+]
+
+const generalSettings = ref({
+  siteTitle: 'Neural_Talent_Mesh',
+  supportEmail: 'uplink@neural.io',
+  maintenanceMode: false
+})
+
+const jobSettings = ref({
+  autoApprove: false,
+  defaultDuration: 30,
+  boostMultiplier: '2.0'
+})
+
+const securitySettings = ref({
+  enforce2FA: true,
+  sessionTimeout: 60,
+  whitelistedIPs: ['127.0.0.1', '192.168.1.1']
+})
+
+const paymentGateways = ref([
+  { id: 1, name: 'Stripe_Protocol', enabled: true },
+  { id: 2, name: 'PayPal_Relay', enabled: false },
+  { id: 3, name: 'Crypto_Uplink', enabled: true }
+])
+
+const webhooks = ref([
+  { id: 1, target: 'Slack_Sync', url: 'https://hooks.slack.com/services/...', events: ['JOB_POSTED', 'NEW_TALENT'] },
+  { id: 2, target: 'Discord_Relay', url: 'https://discord.com/api/webhooks/...', events: ['SYSTEM_ALERT'] }
+])
+
+const gdprOptions = ref([
+  { id: 1, label: 'Right_to_be_Forgotten_Portal', state: true },
+  { id: 2, label: 'Auto_Anonymize_Archived_Data', state: false },
+  { id: 3, label: 'Data_Portability_Self_Service', state: true }
+])
+
+const emailTemplates = [
+  { name: 'Application_Acknowledgement', trigger: 'ENTRY_SUBMIT', channel: 'EMAIL' },
+  { name: 'Interview_Invitation_V4', trigger: 'STAGE_ADVANCE', channel: 'EMAIL' },
+  { name: 'SMS_Interview_Reminder', trigger: 'T_MINUS_1_HOUR', channel: 'SMS' },
+  { name: 'Offer_Letter_Master', trigger: 'OFFER_INITIATED', channel: 'EMAIL' }
+]
+
+const systemLogs = ref([
+  { time: '10:00:00', type: 'system', message: 'Hypervisor core established.' },
+  { time: '10:02:45', type: 'privacy', message: 'Retention purge: 1,204 records cleared.' }
+])
+
+const getLogColor = (type: string) => {
+  switch(type) {
+    case 'error': return 'text-red-500';
+    case 'privacy': return 'text-amber-500';
+    default: return 'text-cyan-500';
+  }
+}
+
+const triggerToast = (msg: string) => {
+  toastMsg.value = msg;
+  showToast.value = true;
+  setTimeout(() => showToast.value = false, 3000);
+}
+
+const triggerBackup = () => {
+  triggerToast('SNAPSHOT_GENERATED');
+}
+
+onMounted(() => {
+  setInterval(() => {
+    const events = ['DDoS Filter: Passive', 'GDPR Node: Synced', 'SMTP Handshake: Success', 'API Payload: Received'];
+    systemLogs.value.push({
+      time: new Date().toLocaleTimeString('en-GB'),
+      type: 'info',
+      message: events[Math.floor(Math.random() * events.length)]
+    });
+    if(systemLogs.value.length > 30) systemLogs.value.shift();
+    nextTick(() => { if(logContainer.value) logContainer.value.scrollTop = logContainer.value.scrollHeight });
+  }, 7000);
 })
 </script>
+
+<style scoped>
+  @reference 'tailwindcss';
+:deep(.text-cyan-500) { color: v-bind('themeStore.accentColor'); }
+:deep(.bg-cyan-500) { background-color: v-bind('themeStore.accentColor'); }
+:deep(.border-cyan-500) { border-color: v-bind('themeStore.accentColor'); }
+:deep(.decoration-cyan-500\/30) { text-decoration-color: v-bind('themeStore.accentColor + "4D"'); }
+
+.custom-scrollbar::-webkit-scrollbar { width: 3px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.05); }
+
+.toast-enter-active, .toast-leave-active { transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1); }
+.toast-enter-from { transform: translateY(100px); opacity: 0; }
+.toast-leave-to { transform: translateX(100px); opacity: 0; }
+
+section { animation: section-fade 0.5s ease-out; }
+@keyframes section-fade {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
