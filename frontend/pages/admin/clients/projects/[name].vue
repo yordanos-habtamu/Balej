@@ -1,164 +1,175 @@
 <template>
-  <div class="min-h-screen flex">
-    <!-- Sidebar -->
-    <aside class="flex-shrink-0 pt-8">
-      <admin-sidebar />
-    </aside>
+  <div class="h-screen w-full bg-[#020205] text-white font-mono flex overflow-hidden selection:bg-cyan-500/30">
+    <admin-sidebar />
 
-    <!-- Main Content -->
-    <main class="flex-1 bg-gray-900 text-gray-100 overflow-y-auto">
-      <div class="max-w-7xl mx-auto px-6 py-10 lg:px-12 lg:py-14">
-        <!-- Back Button -->
-        <div class="mb-10">
-          <NuxtLink to="/admin/clients" class="inline-flex items-center gap-3 text-gray-400 hover:text-[color:var(--primary-color)] transition">
-            <ArrowLeftCircleIcon class="w-8 h-8" />
-            <span class="text-lg font-medium">Back to Clients</span>
-          </NuxtLink>
-        </div>
+    <main 
+      :class="[
+        'flex-1 flex flex-col h-full transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)]',
+        themeStore.terminalCollapsed ? 'pl-20' : 'pl-72'
+      ]"
+    >
+      <div class="absolute inset-0 pointer-events-none opacity-10" 
+           :style="{ background: `radial-gradient(circle at 50% 0%, ${themeStore.accentColor}, transparent 70%)` }">
+      </div>
 
-        <!-- Project Header -->
-        <div class="bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-10 mb-10">
-          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-            <div>
-              <h1 class="text-4xl lg:text-5xl font-bold mb-4">Enterprise Dashboard Redesign</h1>
-              <div class="flex flex-wrap items-center gap-6 text-gray-400">
-                <div class="flex items-center gap-3">
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  <span>Project ID: #PROJ-1248</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span>Deadline: Feb 15, 2026</span>
-                </div>
-                <span :class="[
-                  'px-5 py-2 rounded-full font-medium',
-                  project.status === 'active' ? 'bg-green-600/20 text-green-400' :
-                  project.status === 'completed' ? 'bg-blue-600/20 text-blue-400' :
-                  'bg-amber-600/20 text-amber-400'
-                ]">
-                  {{ project.statusLabel }}
-                </span>
-              </div>
-            </div>
-
-            <div class="flex flex-col sm:flex-row gap-4">
-              <button class="px-8 py-4 bg-gray-700 hover:bg-gray-600 text-white rounded-2xl font-semibold transition flex items-center justify-center gap-3">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-                Edit Project
-              </button>
-              
-                <button class="px-8 py-4 bg-[color:var(--primary-color)] hover:bg-[color:var(--primary-color)/0.9] text-white rounded-2xl font-semibold transition flex items-center justify-center gap-3 shadow-lg" @click="RouteChat()">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                Message Client
-              </button>
-              
-              
-            </div>
-          </div>
-        </div>
-
-        <!-- Project Overview Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-          <!-- Budget & Progress -->
-          <div class="md:col-span-2 space-y-8">
-            <div class="bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-8">
-              <h2 class="text-2xl font-bold mb-6">Project Progress</h2>
-              <div class="flex items-end justify-between mb-6">
-                <div>
-                  <p class="text-5xl font-bold text-white">{{ project.progress }}%</p>
-                  <p class="text-gray-400 mt-2">Complete</p>
-                </div>
-                <div class="text-right">
-                  <p class="text-3xl font-bold text-[color:var(--primary-color)]">${{ project.spent }}</p>
-                  <p class="text-gray-400">of ${{ project.budget }} spent</p>
-                </div>
-              </div>
-              <div class="w-full bg-gray-700 rounded-full h-6">
-                <div
-                  class="h-6 rounded-full transition-all duration-700"
-                  :style="{ width: project.progress + '%', backgroundColor: 'var(--primary-color)' }"
-                ></div>
-              </div>
-            </div>
-
-            <div class="bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-8">
-              <h2 class="text-2xl font-bold mb-6">Project Description</h2>
-              <p class="text-lg text-gray-300 leading-relaxed">
-                {{ project.description }}
-              </p>
-            </div>
+      <div class="flex-1 overflow-y-auto custom-scrollbar relative z-10 px-4 py-6 lg:px-10">
+        <div class="max-w-6xl mx-auto">
+          
+          <div class="mb-6 group">
+            <NuxtLink to="/admin/clients" class="inline-flex items-center gap-3 text-gray-500 hover:text-white transition-all">
+              <span class="text-lg group-hover:-translate-x-1 transition-transform">«</span>
+              <span class="text-[9px] tracking-[0.4em] uppercase font-bold">RETURN_TO_REGISTRY</span>
+            </NuxtLink>
           </div>
 
-          <!-- Quick Stats -->
-          <div class="space-y-8">
-            <div class="bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-8">
-              <h2 class="text-2xl font-bold mb-6">Quick Stats</h2>
-              <div class="space-y-6">
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Client</span>
-                  <span class="font-semibold">TechCorp Solutions</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Start Date</span>
-                  <span class="font-semibold">Oct 1, 2025</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Talents Assigned</span>
-                  <span class="font-semibold text-[color:var(--primary-color)]">{{ project.talents }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Tasks Completed</span>
-                  <span class="font-semibold">42 / 68</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-8">
-              <h2 class="text-2xl font-bold mb-6">Timeline</h2>
-              <div class="space-y-4">
-                <div class="flex items-center gap-4">
-                  <div class="w-4 h-4 rounded-full bg-green-500"></div>
-                  <span class="text-gray-300">Kickoff Meeting</span>
-                  <span class="text-gray-500 ml-auto">Oct 5</span>
-                </div>
-                <div class="flex items-center gap-4">
-                  <div class="w-4 h-4 rounded-full bg-[color:var(--primary-color)]"></div>
-                  <span class="text-gray-300">Design Phase Complete</span>
-                  <span class="text-gray-500 ml-auto">Nov 20</span>
-                </div>
-                <div class="flex items-center gap-4">
-                  <div class="w-4 h-4 rounded-full bg-gray-600"></div>
-                  <span class="text-gray-300">Development Phase</span>
-                  <span class="text-gray-500 ml-auto">Ongoing</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Assigned Talents -->
-        <div class="bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-10">
-          <h2 class="text-2xl font-bold mb-8">Assigned Talents</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div v-for="talent in project.assignedTalents" :key="talent.id" class="flex items-center gap-6 bg-gray-700/50 rounded-2xl p-6 hover:bg-gray-700/70 transition">
-              <div class="w-16 h-16 rounded-full overflow-hidden ring-4 ring-gray-600">
-                <img :src="talent.avatar" alt="Talent" class="w-full h-full object-cover" />
-              </div>
+          <div class="bg-black border border-white/10 p-6 lg:p-10 mb-6 relative overflow-hidden group">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-white/[0.02] -rotate-45 translate-x-16 -translate-y-16"></div>
+            
+            <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-6 relative z-10">
               <div>
-                <h4 class="text-lg font-semibold text-white">{{ talent.name }}</h4>
-                <p class="text-gray-400">{{ talent.role }}</p>
-                <p class="text-sm text-gray-500 mt-1">{{ talent.hours }} hours this week</p>
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="w-1.5 h-1.5" :style="{ backgroundColor: themeStore.accentColor }"></div>
+                  <span class="text-[9px] tracking-[0.5em] text-gray-500 uppercase italic">Active_Mission_Control</span>
+                </div>
+                <h1 class="text-3xl lg:text-4xl xl:text-5xl font-black italic uppercase tracking-tighter mb-4">
+                  {{ project.name.replace(/ /g, '_') }}
+                </h1>
+                
+                <div class="flex flex-wrap items-center gap-6">
+                  <div class="flex items-center gap-2 text-[9px] tracking-widest text-gray-400">
+                    <span :style="{ color: themeStore.accentColor }">ID_REF:</span>
+                    <span>#PROJ-1248</span>
+                  </div>
+                  <div class="flex items-center gap-2 text-[9px] tracking-widest text-gray-400">
+                    <span :style="{ color: themeStore.accentColor }">DEADLINE:</span>
+                    <span>{{ project.deadline.toUpperCase() }}</span>
+                  </div>
+                  <span :class="[
+                    'text-[8px] px-3 py-0.5 border font-black tracking-widest uppercase',
+                    project.status === 'active' ? 'border-green-500/50 text-green-500' : 'border-blue-500/50 text-blue-500'
+                  ]">
+                    {{ project.statusLabel }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-3">
+                <button class="px-6 py-3 border border-white/10 text-[9px] font-black tracking-[0.3em] uppercase hover:bg-white hover:text-black transition-all">
+                  [ EDIT_PARAMETERS ]
+                </button>
+                <button 
+                  @click="RouteChat()"
+                  class="px-6 py-3 text-[9px] font-black tracking-[0.3em] uppercase text-black transition-all hover:scale-105"
+                  :style="{ backgroundColor: themeStore.accentColor }"
+                >
+                  INITIALIZE_COMMS
+                </button>
               </div>
             </div>
           </div>
+
+          <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+            
+            <div class="xl:col-span-2 space-y-6">
+              <div class="bg-white/[0.02] border border-white/5 p-6 lg:p-8">
+                <div class="flex items-center gap-2 mb-6">
+                  <div class="h-[1px] w-8 bg-white/20"></div>
+                  <h2 class="text-[9px] font-black tracking-[0.4em] uppercase text-gray-500">Synchronization_Status</h2>
+                </div>
+                
+                <div class="flex flex-col md:flex-row items-end justify-between gap-6 mb-8">
+                  <div class="flex items-baseline gap-4">
+                    <p class="text-5xl lg:text-6xl font-black italic tracking-tighter" :style="{ color: themeStore.accentColor }">{{ project.progress }}%</p>
+                    <p class="text-[9px] text-gray-500 tracking-widest uppercase mb-1">Complete</p>
+                  </div>
+                  <div class="text-right border-r-2 pr-5" :style="{ borderColor: themeStore.accentColor }">
+                    <p class="text-2xl font-black tracking-tighter text-white">${{ project.spent }}</p>
+                    <p class="text-[8px] text-gray-600 uppercase tracking-widest">Consumed / ${{ project.budget }}</p>
+                  </div>
+                </div>
+
+                <div class="w-full bg-white/5 h-1 relative">
+                  <div
+                    class="h-full transition-all duration-1000 ease-out"
+                    :style="{ width: project.progress + '%', backgroundColor: themeStore.accentColor }"
+                  ></div>
+                </div>
+              </div>
+
+              <div class="bg-white/[0.02] border border-white/5 p-6 lg:p-8">
+                <div class="flex items-center gap-2 mb-4">
+                  <div class="h-[1px] w-8 bg-white/20"></div>
+                  <h2 class="text-[9px] font-black tracking-[0.4em] uppercase text-gray-500">Mission_Directives</h2>
+                </div>
+                <p class="text-[11px] text-gray-400 leading-relaxed uppercase tracking-widest">
+                  {{ project.description }}
+                </p>
+              </div>
+            </div>
+
+            <div class="space-y-6">
+              <div class="bg-black border border-white/10 p-6">
+                <h2 class="text-[9px] font-black tracking-[0.4em] uppercase text-white mb-6">CORE_METRICS</h2>
+                <div class="space-y-4">
+                  <div v-for="(val, label) in { 'Client': 'TechCorp', 'Uplink': 'Oct 1, 2025', 'Load': project.talents + ' Units' }" :key="label" class="flex justify-between border-b border-white/5 pb-2">
+                    <span class="text-[8px] text-gray-600 uppercase tracking-widest">{{ label }}</span>
+                    <span class="text-[9px] font-bold text-white uppercase">{{ val }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-black border border-white/10 p-6 relative overflow-hidden">
+                <h2 class="text-[9px] font-black tracking-[0.4em] uppercase text-white mb-6">EVENT_LOG</h2>
+                <div class="space-y-6 relative">
+                  <div class="absolute left-[7px] top-2 bottom-2 w-[1px] bg-white/10"></div>
+                  
+                  <div class="flex items-center gap-4 relative">
+                    <div class="w-2.5 h-2.5 rounded-full bg-green-500 z-10 border-2 border-black"></div>
+                    <div>
+                      <p class="text-[9px] font-bold text-white uppercase">Kickoff_Meeting</p>
+                      <p class="text-[7px] text-gray-600 tracking-widest uppercase">Oct 05</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-4 relative">
+                    <div class="w-2.5 h-2.5 rounded-full z-10 border-2 border-black" :style="{ backgroundColor: themeStore.accentColor }"></div>
+                    <div>
+                      <p class="text-[9px] font-bold text-white uppercase">Design_Finalized</p>
+                      <p class="text-[7px] text-gray-600 tracking-widest uppercase">Nov 20</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white/[0.02] border border-white/5 p-6 lg:p-8 mb-10">
+            <div class="flex items-center justify-between mb-8">
+              <div class="flex items-center gap-2">
+                <div class="h-[1px] w-8 bg-white/20"></div>
+                <h2 class="text-[9px] font-black tracking-[0.4em] uppercase text-white">Assigned_Talent_Nodes</h2>
+              </div>
+              <span class="text-[8px] text-gray-600 uppercase tracking-widest">Active_Units: {{ project.assignedTalents.length }}</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div v-for="talent in project.assignedTalents" :key="talent.id" class="group flex items-center gap-4 bg-black border border-white/5 p-4 hover:border-white/20 transition-all">
+                <div class="w-10 h-10 border border-white/10 p-0.5 grayscale group-hover:grayscale-0 transition-all duration-300">
+                  <img src="~/assets/painter.png" alt="Talent" class="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <h4 class="text-[10px] font-black text-white uppercase tracking-tighter">{{ talent.name }}</h4>
+                  <p class="text-[7px] text-gray-500 uppercase tracking-widest">{{ talent.role }}</p>
+                  <div class="flex items-center gap-2 mt-2">
+                    <div class="h-0.5 w-10 bg-white/5 overflow-hidden">
+                      <div class="h-full bg-white/20" :style="{ width: (talent.hours / 40 * 100) + '%' }"></div>
+                    </div>
+                    <span class="text-[6px] text-gray-600 uppercase">{{ talent.hours }}H</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </main>
@@ -167,50 +178,56 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import {useRouter} from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useThemeStore } from '~/stores/theme'
-import { ArrowLeftCircleIcon } from '@heroicons/vue/24/outline'
 
-const theme = useThemeStore()
+const themeStore = useThemeStore()
 const router = useRouter()
 
 const RouteChat = () => {
   router.push('/admin/chats')
 }
-// Mock project data
+
 const project = ref({
   name: 'Enterprise Dashboard Redesign',
   description: 'Complete overhaul of the internal analytics platform with modern UI/UX, real-time data visualization, and improved performance. The new dashboard will support multiple user roles and advanced filtering capabilities.',
   status: 'active',
-  statusLabel: 'Active',
+  statusLabel: 'Active_Node',
   budget: '45,000',
   spent: '30,600',
   progress: 68,
   talents: 5,
+  deadline: 'Feb 15, 2026',
   assignedTalents: [
-    { id: 1, name: 'Maria Gonzalez', role: 'Senior UI Designer', hours: 32, avatar: '~/assets/painter.png' },
-    { id: 2, name: 'James Wilson', role: 'Full-Stack Developer', hours: 40, avatar: '~/assets/painter.png' },
-    { id: 3, name: 'Aisha Khan', role: 'Frontend Engineer', hours: 28, avatar: '~/assets/painter.png' },
-    { id: 4, name: 'Carlos Rodriguez', role: 'Backend Developer', hours: 35, avatar: '~/assets/painter.png' },
-    { id: 5, name: 'Sophie Dubois', role: 'Project Manager', hours: 20, avatar: '~/assets/painter.png' }
+    { id: 1, name: 'Maria Gonzalez', role: 'Senior UI Designer', hours: 32 },
+    { id: 2, name: 'James Wilson', role: 'Full-Stack Developer', hours: 40 },
+    { id: 3, name: 'Aisha Khan', role: 'Frontend Engineer', hours: 28 },
+    { id: 4, name: 'Carlos Rodriguez', role: 'Backend Developer', hours: 35 },
+    { id: 5, name: 'Sophie Dubois', role: 'Project Manager', hours: 20 }
   ]
 })
-
-// Theme sync
-onMounted(() => {
-  const updateColor = () => {
-    const colorMap: Record<string, string> = {
-      blue: '#3b82f6',
-      indigo: '#6366f1',
-      purple: '#a78bfa',
-      pink: '#ec4899',
-      emerald: '#10b981',
-      red: '#ef4444'
-    }
-    const color = colorMap[theme.primaryColor] || '#3b82f6'
-    document.documentElement.style.setProperty('--primary-color', color)
-  }
-  updateColor()
-  watch(() => theme.primaryColor, updateColor)
-})
 </script>
+
+<style scoped>
+@reference 'tailwindcss';
+
+/* Slimmer scrollbar for a cleaner fit */
+.custom-scrollbar::-webkit-scrollbar { width: 3px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #1f2937; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: v-bind('themeStore.accentColor'); }
+
+/* Refined animations with less travel distance */
+.bg-white\/\[0\.02\], .bg-black {
+  animation: nodeEnter 0.5s cubic-bezier(0.2, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+@keyframes nodeEnter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.bg-white\/\[0\.02\]:nth-child(1) { animation-delay: 0.1s; }
+.bg-white\/\[0\.02\]:nth-child(2) { animation-delay: 0.15s; }
+</style>

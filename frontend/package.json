@@ -22,6 +22,7 @@
     "graphql": "^16.11.0",
     "graphql-ws": "^6.0.6",
     "gsap": "^3.13.0",
+    "html2pdf.js": "^0.12.1",
     "jwt-decode": "^4.0.0",
     "nuxt": "^3.17.6",
     "pinia-plugin-persistedstate": "^4.7.1",

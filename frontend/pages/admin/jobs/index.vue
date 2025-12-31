@@ -170,6 +170,7 @@ const jobs = ref([
 
 const viewApplications = (job) => {
   console.log('Routing to candidates for:', job.title)
+  navigateTo(`/admin/jobs/${job.id}/candidates`)
 }
 </script>
 

@@ -1,162 +1,149 @@
 <template>
-  <div class="min-h-screen flex">
-    <!-- Sidebar -->
-    <!-- <aside class="flex-shrink-0 pt-8">
-      <admin-sidebar />
-    </aside> -->
+  <div class="min-h-screen w-full bg-[#020205] text-white font-mono flex overflow-hidden selection:bg-cyan-500/30">
+    <admin-sidebar />
 
-    <!-- Main Content -->
-    <main class="flex-1 bg-gray-900 text-gray-100 overflow-y-auto">
-      <div class="max-w-4xl mx-auto px-6 py-10 lg:px-12 lg:py-16">
-        <!-- Header -->
-        <div class="text-center mb-12">
-          <h1 class="text-4xl lg:text-5xl font-bold mb-4">Post a New Job</h1>
-          <p class="text-xl text-gray-400">Create a job posting to attract top talent</p>
-        </div>
+    <main
+      :class="[
+        'flex-1 relative flex flex-col min-h-screen transition-all duration-500 ease-[cubic-bezier(0.2,1,0.3,1)]',
+        themeStore.terminalCollapsed ? 'ml-20' : 'ml-72'
+      ]"
+    >
+      <div
+        class="absolute inset-0 pointer-events-none opacity-10"
+        :style="{ background: `radial-gradient(circle at 50% 0%, ${themeStore.accentColor}, transparent 70%)` }"
+      ></div>
 
-        <!-- Progress Steps -->
-        <div class="flex items-center justify-center mb-12">
-          <div class="flex items-center">
-            <div :class="[step >= 1 ? 'bg-[color:var(--primary-color)]' : 'bg-gray-700', 'w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold transition']">
-              1
-            </div>
-            <div class="w-32 h-1 mx-4" :class="step >= 2 ? 'bg-[color:var(--primary-color)]' : 'bg-gray-700'"></div>
-            <div :class="[step >= 2 ? 'bg-[color:var(--primary-color)]' : 'bg-gray-700', 'w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold transition']">
-              2
+      <div class="flex-1 overflow-y-auto custom-scrollbar relative z-10 px-6 py-10 lg:px-12">
+        <div class="max-w-4xl mx-auto">
+          
+          <div class="mb-12 border-l-4 pl-6 py-2" :style="{ borderColor: themeStore.accentColor }">
+            <h1 class="text-4xl lg:text-5xl font-black italic uppercase tracking-tighter">
+              POST_<span :style="{ color: themeStore.accentColor }">MISSION_OFFER</span>
+            </h1>
+            <p class="text-[10px] text-gray-500 tracking-[0.4em] mt-2 uppercase">
+              Uplink Status: Ready // Node: {{ auth.user?.user_id || 'NULL' }}
+            </p>
+          </div>
+
+          <div class="flex items-center gap-4 mb-10">
+            <div v-for="n in 2" :key="n" class="flex items-center gap-4">
+              <div
+                class="text-[10px] font-bold transition-colors duration-500"
+                :style="{ color: step >= n ? themeStore.accentColor : '#374151' }"
+              >
+                STEP_0{{ n }}
+              </div>
+              <div v-if="n < 2" class="w-20 h-[1px] bg-gray-800 relative">
+                <div
+                  class="absolute inset-0 transition-all duration-700"
+                  :style="{ width: step > n ? '100%' : '0%', backgroundColor: themeStore.accentColor }"
+                ></div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Form Card -->
-        <div class="bg-gray-800 rounded-3xl shadow-2xl border border-gray-700 p-10 lg:p-14">
-          <form @submit.prevent="step === 2 ? submitForm() : nextStep()">
-            <!-- Step 1: Job Basics -->
-            <div v-if="step === 1" class="space-y-8">
-              <div>
-                <label class="block text-lg font-medium text-gray-300 mb-3">Job Title</label>
-                <input
-                  v-model="formData.title"
-                  type="text"
-                  placeholder="e.g. Senior Full-Stack Developer"
-                  class="w-full px-6 py-4 bg-gray-700 border border-gray-600 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[color:var(--primary-color)/0.6] text-white placeholder-gray-500 transition"
-                  required
-                />
-              </div>
+          <div class="bg-black/40 backdrop-blur-md border border-white/10 relative overflow-hidden group">
+            <div
+              class="absolute top-0 right-0 w-12 h-12 border-r border-t border-white/20 transition-colors group-hover:border-cyan-500"
+              :style="{ borderColor: themeStore.accentColor }"
+            ></div>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                  <label class="block text-lg font-medium text-gray-300 mb-3">Job Type</label>
-                  <select
+            <form @submit.prevent="step === 2 ? submitForm() : nextStep()" class="p-8 lg:p-12">
+              
+              <div v-show="step === 1" class="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
+                <div class="space-y-3">
+                  <label class="neural-label">>> DESIGNATION_TITLE</label>
+                  <input
+                    v-model="formData.title"
+                    type="text"
+                    placeholder="E.G. SYSTEMS_ARCHITECT"
+                    class="neural-input"
+                    :class="{ 'border-red-500/50': errors.title }"
+                  />
+                  <p v-if="errors.title" class="text-[7px] text-red-500 tracking-widest uppercase">{{ errors.title }}</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <NeuroDrop
                     v-model="formData.job_type"
-                    class="w-full px-6 py-4 bg-gray-700 border border-gray-600 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[color:var(--primary-color)/0.6] text-white"
-                    required
-                  >
-                    <option value="" disabled>Select job type</option>
-                    <option value="Full-time">Full-time</option>
-                    <option value="Part-time">Part-time</option>
-                    <option value="Contract">Contract</option>
-                    <option value="Internship">Internship</option>
-                    <option value="Remote">Remote</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label class="block text-lg font-medium text-gray-300 mb-3">Category</label>
-                  <select
+                    :options="step1Fields[1].options"
+                    placeholder="SELECT_MODALITY"
+                    label="CONTRACT_MODALITY"
+                  />
+                  <NeuroDrop
                     v-model="formData.category"
-                    class="w-full px-6 py-4 bg-gray-700 border border-gray-600 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[color:var(--primary-color)/0.6] text-white"
-                    required
-                  >
-                    <option value="" disabled>Select category</option>
-                    <option value="Construction">Construction</option>
-                    <option value="Repairing">Repairing</option>
-                    <option value="HouseKeeping">House Keeping</option>
-                    <option value="Management">Management</option>
-                  </select>
+                    :options="step1Fields[2].options"
+                    placeholder="SELECT_SECTOR"
+                    label="SECTOR_CATALOGUE"
+                  />
+                </div>
+
+                <div class="space-y-3">
+                  <label class="neural-label">>> DIRECTIVE_REQUISITES</label>
+                  <textarea
+                    v-model="formData.description"
+                    rows="5"
+                    placeholder="SPECIFY_PARAMETERS..."
+                    class="neural-input resize-none"
+                    :class="{ 'border-red-500/50': errors.description }"
+                  ></textarea>
                 </div>
               </div>
 
-              <div>
-                <label class="block text-lg font-medium text-gray-300 mb-3">Job Description</label>
-                <textarea
-                  v-model="formData.description"
-                  rows="8"
-                  placeholder="Describe the role, responsibilities, requirements, and benefits..."
-                  class="w-full px-6 py-4 bg-gray-700 border border-gray-600 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[color:var(--primary-color)/0.6] text-white placeholder-gray-500 resize-none transition"
-                  required
-                ></textarea>
-              </div>
-            </div>
-
-            <!-- Step 2: Additional Details -->
-            <div v-if="step === 2" class="space-y-8">
-              <div>
-                <label class="block text-lg font-medium text-gray-300 mb-3">Location</label>
-                <input
-                  v-model="formData.location"
-                  type="text"
-                  placeholder="e.g. Remote, New York, NY, or On-site"
-                  class="w-full px-6 py-4 bg-gray-700 border border-gray-600 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[color:var(--primary-color)/0.6] text-white placeholder-gray-500 transition"
-                  required
-                />
+              <div v-show="step === 2" class="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
+                <div class="space-y-3">
+                  <label class="neural-label">>> GEOSPATIAL_COORDS</label>
+                  <input
+                    v-model="formData.location"
+                    type="text"
+                    placeholder="E.G. NEURAL_HUB_REMOTE"
+                    class="neural-input"
+                    :class="{ 'border-red-500/50': errors.location }"
+                  />
+                </div>
+                <div class="space-y-3">
+                  <label class="neural-label">>> MAX_RECEPTION_THRESHOLD</label>
+                  <input v-model.number="formData.applicationCount" type="number" class="neural-input" />
+                  <p class="text-[8px] text-gray-600 uppercase">Limit concurrent uplink attempts.</p>
+                </div>
               </div>
 
-              <div>
-                <label class="block text-lg font-medium text-gray-300 mb-3">Maximum Applications (optional)</label>
-                <input
-                  v-model.number="formData.applicationCount"
-                  type="number"
-                  min="0"
-                  placeholder="Leave blank for unlimited"
-                  class="w-full px-6 py-4 bg-gray-700 border border-gray-600 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[color:var(--primary-color)/0.6] text-white placeholder-gray-500 transition"
-                />
-                <p class="text-sm text-gray-500 mt-3">Set a limit to close applications automatically when reached</p>
+              <div class="flex justify-between items-center pt-10 mt-10 border-t border-white/5">
+                <button v-if="step > 1" type="button" @click="step--" class="neural-btn-secondary">
+                  [ REVERT_STEP ]
+                </button>
+                <div v-else></div>
+                <button
+                  type="submit"
+                  :disabled="mutationLoading"
+                  class="neural-btn-primary"
+                  :style="{ backgroundColor: themeStore.accentColor }"
+                >
+                  <span v-if="mutationLoading" class="animate-spin mr-2">⚬</span>
+                  {{ step === 2 ? 'DISPATCH_OFFER' : 'INITIALIZE_NEXT_PHASE' }}
+                </button>
               </div>
-            </div>
+            </form>
 
-            <!-- Navigation Buttons -->
-            <div class="flex justify-between pt-10">
-              <button
-                v-if="step > 1"
-                type="button"
-                @click="step--"
-                class="px-8 py-4 bg-gray-700 hover:bg-gray-600 text-white rounded-2xl font-semibold transition"
+            <div
+              v-if="success"
+              class="absolute inset-0 bg-[#020205]/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center p-10 text-center"
+            >
+              <div
+                class="w-16 h-16 border-2 mb-6 flex items-center justify-center animate-bounce"
+                :style="{ borderColor: themeStore.accentColor, color: themeStore.accentColor }"
               >
-                Back
-              </button>
-
-              <button
-                type="submit"
-                :disabled="mutationLoading"
-                class="px-10 py-4 bg-[color:var(--primary-color)] hover:bg-[color:var(--primary-color)/0.9] text-white rounded-2xl font-semibold text-lg transition shadow-lg disabled:opacity-70 disabled:cursor-not-allowed ml-auto flex items-center gap-3"
-              >
-                <span v-if="mutationLoading">
-                  <svg class="w-6 h-6 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"></circle>
-                    <path class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Posting...
-                </span>
-                <span v-else>
-                  {{ step === 2 ? 'Post Job' : 'Next Step' }}
-                </span>
-              </button>
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M5 13l4 4L19 7" stroke-width="3" />
+                </svg>
+              </div>
+              <h3 class="text-2xl font-black italic uppercase tracking-tighter" :style="{ color: themeStore.accentColor }">Uplink_Successful</h3>
+              <p class="text-[10px] text-gray-500 uppercase tracking-[0.4em] mt-2">Redirecting to terminal...</p>
             </div>
-          </form>
-
-          <!-- Success Message -->
-          <div v-if="success" class="mt-10 p-8 bg-green-600/20 border border-green-600 rounded-3xl text-center">
-            <svg class="w-16 h-16 text-green-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-            </svg>
-            <p class="text-2xl font-bold text-green-400">Job Posted Successfully!</p>
-            <p class="text-gray-300 mt-3">Redirecting to dashboard...</p>
           </div>
 
-          <!-- Error Message -->
-          <div v-if="mutationError" class="mt-8 p-6 bg-red-600/20 border border-red-600 rounded-3xl text-center">
-            <p class="text-xl text-red-400 font-medium">Error posting job</p>
-            <p class="text-gray-300 mt-2">{{ errorMessage }}</p>
+          <div v-if="mutationError" class="mt-6 bg-red-500/10 border border-red-500/50 p-4 font-mono text-[9px] text-red-500 uppercase tracking-widest">
+            ERROR_LOG: {{ errorMessage }}
           </div>
         </div>
       </div>
@@ -170,139 +157,110 @@ import { useRouter } from 'vue-router'
 import { gql } from 'graphql-tag'
 import { CombinedError } from '@urql/core'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
+import { useUrqlClient } from '@/composables/useUrqlClient'
+import NeuroDrop from '@/components/NeuroDrop.vue'
+
+const themeStore = useThemeStore()
 const client = useUrqlClient()
+const router = useRouter()
+const auth = useAuthStore()
 
 const REGISTER = gql`
-  mutation AddJobOffer($input: NewJobOffer!) {
-    AddJobOffer(input: $input) {
-      title
-      job_type
-      category
-      description
-      location
-      applicationCount
-      offeredByuser {
-        id
-        email
-        role
-      }
-    }
+mutation AddJobOffer($input: NewJobOffer!) {
+  AddJobOffer(input: $input) {
+    title job_type category description location applicationCount
   }
+}
 `
 
 const step1Fields = [
-  { key: 'title', label: 'Job Title', type: 'string' },
-  { key: 'job_type', label: 'Job Type', type: 'string', options: ['Full-time', 'Part-time', 'Contract', 'Internship', 'Remote'] },
-  { key: 'category', label: 'Category', type: 'string', options: ['Construction', 'Repairing', 'HouseKeeping', 'Management'] },
-  { key: 'description', label: 'Description', type: 'string' }
+  { key: 'title', label: 'TITLE', type: 'string' },
+  { key: 'job_type', label: 'JOB_TYPE', type: 'string', options: ['Full-time', 'Part-time', 'Contract', 'Internship', 'Remote'] },
+  { key: 'category', label: 'CATEGORY', type: 'string', options: ['Construction', 'Repairing', 'HouseKeeping', 'Management'] },
+  { key: 'description', label: 'DESCRIPTION', type: 'string' }
 ] as const
-
 
 const step2Fields = [
-  { key: 'location', label: 'Location', type: 'string' },
-  { key: 'applicationCount', label: 'Application Count', type: 'int' }
+  { key: 'location', label: 'LOCATION', type: 'string' },
+  { key: 'applicationCount', label: 'APP_COUNT', type: 'int' }
 ] as const
 
-const allFields = [...step1Fields, ...step2Fields]
-
-type FieldKey = typeof allFields[number]['key']
-type FieldType = typeof allFields[number]['type']
+type FieldKey = 'title' | 'job_type' | 'category' | 'description' | 'location' | 'applicationCount'
 
 const formData = reactive<Record<FieldKey, string | number>>({
-  title: '',
-  job_type: '',
-  category: '',
-  description: '',
-  location: '',
-  applicationCount: 0
+  title: '', job_type: '', category: '', description: '', location: '', applicationCount: 0
 })
 
 const errors = reactive<Record<FieldKey, string>>({
-  title: '',
-  job_type: '',
-  category: '',
-  description: '',
-  location: '',
-  applicationCount: ''
+  title: '', job_type: '', category: '', description: '', location: '', applicationCount: ''
 })
 
-const handleInput = (key: FieldKey, value: string, type: FieldType) => {
-  formData[key] = type === 'int' ? parseInt(value) || 0 : value
-}
-
-const validateStep = (
-  fields: readonly { key: FieldKey; label: string; type: FieldType }[]
-): boolean => {
-  let isValid = true
-  fields.forEach(({ key }) => {
-    if (!formData[key]) {
-      errors[key] = `${key.replace(/_/g, ' ')} is required`
-      isValid = false
+const validateStep = (fields: readonly any[]): boolean => {
+  let valid = true
+  fields.forEach((field) => {
+    const key = field.key as FieldKey
+    if (!formData[key] && key !== 'applicationCount') {
+      errors[key] = `${field.label}_IS_REQUIRED`
+      valid = false
     } else {
       errors[key] = ''
     }
   })
-  return isValid
+  return valid
 }
 
 const step = ref(1)
 const mutationLoading = ref(false)
 const mutationError = ref<CombinedError | null>(null)
 const success = ref(false)
-const router = useRouter()
-const auth = useAuthStore()
-
 const errorMessage = computed(() => mutationError.value?.message || '')
 
 function nextStep() {
   if (validateStep(step1Fields)) {
-    step.value++
+    step.value = 2
   }
 }
 
 async function submitForm() {
   if (!validateStep(step2Fields)) return
-
   if (!auth.user?.user_id) {
-    mutationError.value = new CombinedError({
-      networkError: new Error('User not authenticated.')
-    })
+    mutationError.value = new CombinedError({ networkError: new Error('UNAUTHORIZED_ACCESS') })
     return
   }
 
   mutationLoading.value = true
-  mutationError.value = null
-  success.value = false
-
   try {
-    const result = await client
-      .mutation(REGISTER, {
-        input: {
-          ...formData,
-          offeredByuser: parseInt(auth.user.user_id)
-        }
-      })
-      .toPromise()
+    const result = await client.mutation(REGISTER, {
+      input: { ...formData, offeredByuser: parseInt(auth.user.user_id) }
+    }).toPromise()
 
-    if (result.data?.AddJobOffer) {
+    if (result.data) {
       success.value = true
-      Object.keys(formData).forEach((k) => {
-        const key = k as FieldKey
-        formData[key] = typeof formData[key] === 'number' ? 0 : ''
-      })
-      step.value = 1
-      setTimeout(() => router.push('/admin'), 1000)
+      setTimeout(() => router.push('/admin/dashboard'), 1500)
     } else if (result.error) {
       mutationError.value = result.error
     }
   } catch (err: any) {
     mutationError.value = err
-    console.error('GraphQL Error:', err)
   } finally {
     mutationLoading.value = false
   }
 }
-
-const activeStep = 'text-blue-600 font-bold underline'
-const stepStyle = 'text-gray-400'
 </script>
+
+<style scoped>
+@reference 'tailwindcss';
+
+.neural-label { @apply text-[9px] font-mono text-gray-500 uppercase tracking-[0.4em] block italic; }
+.neural-input { @apply w-full bg-[rgba(255,255,255,0.03)] border border-white/10 p-4 text-xs font-mono text-white transition-all uppercase outline-none; }
+.neural-input:focus { 
+  @apply bg-[rgba(255,255,255,0.07)]; 
+  border-color: v-bind('themeStore.accentColor');
+  box-shadow: 0 0 15px v-bind('themeStore.accentColor + "22"');
+}
+.neural-btn-primary { @apply px-10 py-4 font-black uppercase text-[10px] tracking-[0.3em] text-black transition-all hover:scale-105 active:scale-95 disabled:opacity-50; }
+.neural-btn-secondary { @apply px-8 py-3 border border-white/10 text-[10px] uppercase font-bold tracking-[0.3em] hover:bg-white hover:text-black transition-all; }
+.custom-scrollbar::-webkit-scrollbar { width: 3px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: v-bind('themeStore.accentColor'); }
+</style>
