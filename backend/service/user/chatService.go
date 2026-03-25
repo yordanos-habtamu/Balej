@@ -8,7 +8,7 @@ import(
 type ChatService interface{
 	Create(senderID uint, receiverID uint) (*models.Chat, error)
 	GetByID(chatID string) (*models.Chat, error)
-	SendMessage(chatID string, message *models.Message , senderId int, recieverId int) error
+	SendMessage(chatID string, message *models.Message , senderId int, recieverId int, isFile bool, fileUrl string, fileName string) error
 	GetUserChats(userID uint) ([]*models.Chat, error)
 	GetChatHistory(chatID string) ([]*models.Message, error)
 }
@@ -36,8 +36,8 @@ func (s *chatService) GetByID(chatID string) (*models.Chat, error) {
    return chat,nil
 }
 
-func (s *chatService) SendMessage(chatID string, message *models.Message,senderId int, recieverId int) error {
-	if err := s.repo.SendMessage(chatID, message,senderId,recieverId); err != nil {
+func (s *chatService) SendMessage(chatID string, message *models.Message, senderId int, recieverId int, isFile bool, fileUrl string, fileName string) error {
+	if err := s.repo.SendMessage(chatID, message, senderId, recieverId, isFile, fileUrl, fileName); err != nil {
 		return err
 	}
 	return nil

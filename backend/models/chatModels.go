@@ -18,4 +18,7 @@ type Message struct {
 	Content   string    `json:"content" gorm:"type:text;not null"`
 	SendAt    time.Time `json:"send_at" gorm:"autoCreateTime"`
 	IsRead    bool      `json:"is_read" gorm:"default:false"`
+	IsFile    bool      `json:"is_file" gorm:"default:false"`
+	FileUrl   string    `json:"file_url"`
+	FileName  string    `json:"file_name"`
 }

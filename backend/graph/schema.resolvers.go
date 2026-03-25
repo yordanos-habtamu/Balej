@@ -399,33 +399,52 @@ func (r *mutationResolver) RejectApplication(ctx context.Context, jobID int32, u
 }
 
 // SendMessage is the resolver for the SendMessage field.
-func (r *mutationResolver) SendMessage(ctx context.Context, chatID string, content string, senderID int32, recieverID int32) (*model.Message, error) {
-	msg := &models.Message{
-		ID:       uuid.New().String(),
-		ChatID:   chatID, // still a string
-		Content:  content,
-		SenderID: int(senderID),
-		SendAt:   time.Now(),
-		IsRead:   false,
+func (r *mutationResolver) SendMessage(ctx context.Context, chatID string, content string, senderID int32, recieverID int32, isFile *bool, fileURL *string, fileName *string) (*model.Message, error) {
+	isF := false
+	if isFile != nil {
+		isF = *isFile
+	}
+	fUrl := ""
+	if fileURL != nil {
+		fUrl = *fileURL
+	}
+	fName := ""
+	if fileName != nil {
+		fName = *fileName
 	}
 
-	// Save message to DB
-	if err := r.ChatService.SendMessage(chatID, msg, int(senderID), int(recieverID)); err != nil {
+	msg := &models.Message{
+		ID:       uuid.New().String(),
+		ChatID:   chatID,
+		SenderID: int(senderID),
+		Content:  content,
+		SendAt:   time.Now(),
+		IsRead:   false,
+		IsFile:   isF,
+		FileUrl:  fUrl,
+		FileName: fName,
+	}
+
+	if err := r.ChatService.SendMessage(chatID, msg, int(senderID), int(recieverID), isF, fUrl, fName); err != nil {
 		return nil, err
 	}
 
-	// Publish message to subscribers
-
-	// Build GraphQL response
-	response := &model.Message{
+	gqlMsg := &model.Message{
 		ID:       msg.ID,
 		Message:  msg.Content,
-		SenderID: senderID,
-		ChatID:   chatID, // keep as string!
+		SenderID: int32(msg.SenderID),
+		ChatID:   msg.ChatID,
 		SentAt:   msg.SendAt,
+		IsRead:   msg.IsRead,
+		IsFile:   msg.IsFile,
+		FileURL:  &msg.FileUrl,
+		FileName: &msg.FileName,
 	}
-	r.PubSub.Publish(chatID, response)
-	return response, nil
+
+	// Publish to real-time stream
+	r.PubSub.Publish("chat:"+chatID, gqlMsg)
+
+	return gqlMsg, nil
 }
 
 // CreateChat is the resolver for the CreateChat field.
@@ -768,18 +787,27 @@ func (r *subscriptionResolver) MessageSent(ctx context.Context, chatID string) (
 	log.Println("Subscription started for chatID:", chatID)
 
 	msgChan := make(chan *model.Message, 1)
+	genChan := make(chan interface{}, 1)
 
 	go func() {
-		log.Println("Listening for disconnect on context.Done()")
-		<-ctx.Done()
-		log.Println("Context done for chatID:", chatID)
-		close(msgChan)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data, ok := <-genChan:
+				if !ok {
+					return
+				}
+				if m, ok := data.(*model.Message); ok {
+					msgChan <- m
+				}
+			}
+		}
 	}()
 
 	// Register subscriber
-	err := r.PubSub.Subscribe(chatID, msgChan)
+	err := r.PubSub.Subscribe("chat:"+chatID, genChan)
 	if err != nil {
-		log.Println("Subscription error:", err)
 		return nil, err
 	}
 
@@ -789,6 +817,52 @@ func (r *subscriptionResolver) MessageSent(ctx context.Context, chatID string) (
 // NewNotification is the resolver for the newNotification field.
 func (r *subscriptionResolver) NewNotification(ctx context.Context) (<-chan string, error) {
 	panic(fmt.Errorf("not implemented: NewNotification - newNotification"))
+}
+
+// SendRTCSignal is the resolver for the SendRTCSignal field.
+func (r *mutationResolver) SendRTCSignal(ctx context.Context, chatID string, signal string, typeArg string) (bool, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	rtcSignal := &model.RTCSignal{
+		Signal:   signal,
+		Type:     typeArg,
+		SenderID: int32(userID),
+	}
+
+	r.PubSub.Publish("rtc:"+chatID, rtcSignal)
+	return true, nil
+}
+
+// RtcSignalSent is the resolver for the rtcSignalSent field.
+func (r *subscriptionResolver) RtcSignalSent(ctx context.Context, chatID string) (<-chan *model.RTCSignal, error) {
+	signalChan := make(chan *model.RTCSignal, 1)
+	genChan := make(chan interface{}, 1)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data, ok := <-genChan:
+				if !ok {
+					return
+				}
+				if s, ok := data.(*model.RTCSignal); ok {
+					signalChan <- s
+				}
+			}
+		}
+	}()
+
+	err := r.PubSub.Subscribe("rtc:"+chatID, genChan)
+	if err != nil {
+		return nil, err
+	}
+
+	return signalChan, nil
 }
 
 func (r *mutationResolver) GenerateSecureJobLink(ctx context.Context, jobID string) (string, error) {

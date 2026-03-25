@@ -119,6 +119,15 @@ type Message {
   chatID: String!
   sentAt: Time!
   is_read: Boolean!
+  is_file: Boolean!
+  file_url: String
+  file_name: String
+}
+
+type RTCSignal {
+  signal: String!
+  type: String!
+  senderId: Int!
 }
 
 type Chat {
@@ -196,8 +205,11 @@ type Mutation {
   RejectApplication(job_id: Int!, userId: Int!): RejectionResponse!
 
   # Communication Mutations
-  SendMessage(chatID: String!, content: String!, senderId: Int!, recieverId: Int!): Message!
+  SendMessage(chatID: String!, content: String!, senderId: Int!, recieverId: Int!, is_file: Boolean, file_url: String, file_name: String): Message!
   CreateChat(participantId: Int!): Chat!
+
+  # WebRTC Signaling
+  SendRTCSignal(chatID: String!, signal: String!, type: String!): Boolean!
 
   # Moderation Mutations
   FlagTarget(target_type: String!, target_id: ID!, reason: String!): Flag!
@@ -211,6 +223,7 @@ type Mutation {
 type Subscription {
   messageSent(chatID: ID!): Message!
   newNotification: String!
+  rtcSignalSent(chatID: ID!): RTCSignal!
 }
 
 # --- RESPONSES --- #
