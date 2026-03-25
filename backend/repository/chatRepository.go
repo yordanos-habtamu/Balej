@@ -12,7 +12,7 @@ import (
 type ChatRepository interface {
 	Create(senderID uint, receiverID uint) (*models.Chat, error)
 	GetByID(chatID string) (*models.Chat, error)
-    SendMessage(chatID string, message *models.Message , recieverId int, senderId int) error
+    SendMessage(chatID string, message *models.Message , recieverId int, senderId int, isFile bool, fileUrl string, fileName string) error
 	GetChatsByUserID(userID uint) ([]*models.Chat, error)
 	GetMessagesByChatID(chatID string) ([]*models.Message, error)
 }
@@ -58,7 +58,11 @@ func (r *chatRepo) GetByID(chatID string) (*models.Chat, error) {
 	return &chat, nil
 }
 
-func (r *chatRepo) SendMessage(chatID string, message *models.Message, senderId int, recieverId int) error {
+func (r *chatRepo) SendMessage(chatID string, message *models.Message, senderId int, recieverId int, isFile bool, fileUrl string, fileName string) error {
+	message.IsFile = isFile
+	message.FileUrl = fileUrl
+	message.FileName = fileName
+
 	// Find the chat by ID
 	var chat models.Chat
 
