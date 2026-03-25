@@ -9,6 +9,8 @@ type ChatService interface{
 	Create(senderID uint, receiverID uint) (*models.Chat, error)
 	GetByID(chatID string) (*models.Chat, error)
 	SendMessage(chatID string, message *models.Message , senderId int, recieverId int) error
+	GetUserChats(userID uint) ([]*models.Chat, error)
+	GetChatHistory(chatID string) ([]*models.Message, error)
 }
 
 
@@ -39,4 +41,12 @@ func (s *chatService) SendMessage(chatID string, message *models.Message,senderI
 		return err
 	}
 	return nil
+}
+
+func (s *chatService) GetUserChats(userID uint) ([]*models.Chat, error) {
+	return s.repo.GetChatsByUserID(userID)
+}
+
+func (s *chatService) GetChatHistory(chatID string) ([]*models.Message, error) {
+	return s.repo.GetMessagesByChatID(chatID)
 }

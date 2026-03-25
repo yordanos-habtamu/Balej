@@ -12,7 +12,13 @@ func IsValidJobType(jobType string) bool {
 }
 
 func IsValidCategory(category string) bool {
-	validCategories := []string{"construction", "repairing", "house_keeping", "management"}
+	validCategories := []string{
+		"technology", "healthcare", "finance", "education", "marketing", 
+		"sales", "engineering", "design", "business", "operations",
+		"customer_service", "human_resources", "legal", "media", "science",
+		"administration", "consulting", "retail", "hospitality", "transportation",
+		"manufacturing", "real_estate", "non_profit", "government", "startup",
+	}
 	for _, c := range validCategories {
 		if c == category {
 			return true

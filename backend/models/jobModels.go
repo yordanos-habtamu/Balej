@@ -16,7 +16,11 @@ type JobOffer struct {
 	OfferedByUser    User      `json:"offered_by_user" gorm:"foreignKey:OfferedBy;references:ID;constraint:OnDelete:RESTRICT"`
 	Category         string    `json:"category" gorm:"not null;type:job_category"`
 	ApplicationCount uint      `json:"application_count" gorm:"not null;default:0"`
-	Applicants     []JobApplicant `json:"applications" gorm:"foreignKey:JobOfferID;constraint:OnDelete:CASCADE"`
+	Status           string    `json:"status" gorm:"type:job_status;default:'LIVE'"`
+	HealthScore      int       `json:"health_score" gorm:"default:100"`
+	SalaryRange      string    `json:"salary_range"`
+	ExperienceLevel  string    `json:"experience_level"`
+	Applicants       []JobApplicant `json:"applications" gorm:"foreignKey:JobOfferID;constraint:OnDelete:CASCADE"`
 }
 
 // JobApplicant represents the join table for the many-to-many relationship between JobApplication and User

@@ -15,6 +15,11 @@ type User struct {
 	Address     string    `json:"address" gorm:"not null"`
 	Role        string    `json:"role" gorm:"type:user_role;default:'talent'"`
 	CV          string    `json:"cv"`
-	IsActive    bool      `json:"is_active" gorm:"default:true"`
+	IsActive          bool      `json:"is_active" gorm:"default:true"`
+	IsVerified        bool      `json:"is_verified" gorm:"default:false"`
+	VerificationToken string    `json:"verification_token"`
+	TwoFactorEnabled  bool      `json:"two_factor_enabled" gorm:"default:false"`
+	TwoFactorSecret   string    `json:"two_factor_secret"`
+	ThemePreference   string    `json:"theme_preference" gorm:"default:'talent_purple'"`
 }
 

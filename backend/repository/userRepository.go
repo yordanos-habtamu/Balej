@@ -17,6 +17,8 @@ type UserRepository interface {
 	Login( username string, password string) (token string,err error)
 	Register(user *models.User) error
 	FindByEmail(email string) (*models.User,error)
+	Update(user *models.User) error
+	FindByVerificationToken(token string) (*models.User, error)
 }
 
 type userRepo struct {
@@ -68,4 +70,16 @@ func (r *userRepo) Login(email string, password string) (token string, err error
 
 func ( r *userRepo) Register(user *models.User) error{
 	return r.db.Create(user).Error
+}
+
+func (r *userRepo) Update(user *models.User) error {
+	return r.db.Save(user).Error
+}
+
+func (r *userRepo) FindByVerificationToken(token string) (*models.User, error) {
+	var user models.User
+	if err := r.db.Where("verification_token = ?", token).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
 }

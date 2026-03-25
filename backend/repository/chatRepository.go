@@ -13,6 +13,8 @@ type ChatRepository interface {
 	Create(senderID uint, receiverID uint) (*models.Chat, error)
 	GetByID(chatID string) (*models.Chat, error)
     SendMessage(chatID string, message *models.Message , recieverId int, senderId int) error
+	GetChatsByUserID(userID uint) ([]*models.Chat, error)
+	GetMessagesByChatID(chatID string) ([]*models.Message, error)
 }
 
 type chatRepo struct {
@@ -79,5 +81,20 @@ func (r *chatRepo) SendMessage(chatID string, message *models.Message, senderId 
 	// Append message to existing chat
 	chat.Messages = append(chat.Messages, *message)
 	return r.db.Save(&chat).Error
+}
+
+func (r *chatRepo) GetChatsByUserID(userID uint) ([]*models.Chat, error) {
+	var chats []*models.Chat
+	// Find chats where the user is either the sender or the receiver
+	err := r.db.Where("sender_id = ? OR receiver_id = ?", userID, userID).
+		Order("updated_at desc").
+		Find(&chats).Error
+	return chats, err
+}
+
+func (r *chatRepo) GetMessagesByChatID(chatID string) ([]*models.Message, error) {
+	var messages []*models.Message
+	err := r.db.Where("chat_id = ?", chatID).Order("send_at asc").Find(&messages).Error
+	return messages, err
 }
 

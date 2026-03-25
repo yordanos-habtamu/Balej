@@ -11,6 +11,8 @@ type UserService interface {
    FindByID(id uint) (*models.User, error)
 	FindByEmail(email string)(*models.User,error)
 	Login(username string,password string) (token string,err error)
+	Update(user *models.User) error
+	FindByVerificationToken(token string) (*models.User, error)
 }
 
 type userService struct {
@@ -39,4 +41,12 @@ func(s *userService)Login(email string,password string)(token string ,err error)
 
 func(s *userService) FindByEmail(email string) (*models.User,error){
 	return s.repo.FindByEmail(email)
+}
+
+func (s *userService) Update(user *models.User) error {
+	return s.repo.Update(user)
+}
+
+func (s *userService) FindByVerificationToken(token string) (*models.User, error) {
+	return s.repo.FindByVerificationToken(token)
 }
