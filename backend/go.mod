@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/creasty/defaults v1.7.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/gorilla/schema v1.4.1 // indirect
@@ -18,6 +19,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.6.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/pquerna/otp v1.5.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 )
 
