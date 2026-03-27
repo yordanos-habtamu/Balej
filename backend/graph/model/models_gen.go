@@ -14,7 +14,6 @@ type Applicants struct {
 	AppliedAt string `json:"applied_at"`
 	Status    string `json:"status"`
 	Resume    string `json:"resume"`
-	User      *User  `json:"user,omitempty"`
 }
 
 type ApplicationResponse struct {
@@ -22,39 +21,18 @@ type ApplicationResponse struct {
 	User     *User  `json:"user"`
 }
 
-type ApprovalResponse struct {
-	Response string `json:"response"`
+type Approval struct {
+	UserID int32 `json:"userId"`
+	JobID  int32 `json:"job_id"`
 }
 
-type AuditLog struct {
-	ID          string  `json:"id"`
-	Action      string  `json:"action"`
-	PerformedBy *User   `json:"performed_by"`
-	TargetID    *string `json:"target_id,omitempty"`
-	Timestamp   string  `json:"timestamp"`
-	Metadata    *string `json:"metadata,omitempty"`
+type ApprovalResponse struct {
+	Response string `json:"response"`
 }
 
 type AuthPayload struct {
 	Token string `json:"token"`
 	User  *User  `json:"user"`
-}
-
-type Chat struct {
-	ID           string   `json:"id"`
-	Participants []*User  `json:"participants"`
-	LastMessage  *Message `json:"last_message,omitempty"`
-	UpdatedAt    string   `json:"updated_at"`
-}
-
-type Flag struct {
-	ID         string `json:"id"`
-	TargetType string `json:"target_type"`
-	TargetID   string `json:"target_id"`
-	Reason     string `json:"reason"`
-	Status     string `json:"status"`
-	ReportedBy *User  `json:"reported_by"`
-	CreatedAt  string `json:"created_at"`
 }
 
 type JobApplicantFilter struct {
@@ -75,23 +53,17 @@ type JobFilter struct {
 	JobOfferID *int32  `json:"job_offer_id,omitempty"`
 	UserID     *int32  `json:"user_id,omitempty"`
 	Category   *string `json:"category,omitempty"`
-	Status     *string `json:"status,omitempty"`
 }
 
 type JobOffer struct {
-	JobID            string  `json:"job_id"`
-	JobType          string  `json:"job_type"`
-	Title            string  `json:"title"`
-	Description      string  `json:"description"`
-	Location         string  `json:"location"`
-	OfferedByuser    *User   `json:"offeredByuser"`
-	Category         string  `json:"category"`
-	ApplicationCount int32   `json:"applicationCount"`
-	SalaryRange      *string `json:"salary_range,omitempty"`
-	ExperienceLevel  *string `json:"experience_level,omitempty"`
-	Status           string  `json:"status"`
-	HealthScore      *int32  `json:"health_score,omitempty"`
-	PostedAt         *string `json:"posted_at,omitempty"`
+	JobID            string `json:"job_id"`
+	JobType          string `json:"job_type"`
+	Title            string `json:"title"`
+	Description      string `json:"description"`
+	Location         string `json:"location"`
+	OfferedByuser    *User  `json:"offeredByuser"`
+	Category         string `json:"category"`
+	ApplicationCount int32  `json:"applicationCount"`
 }
 
 type LoginInput struct {
@@ -105,32 +77,31 @@ type Message struct {
 	SenderID int32     `json:"senderId"`
 	ChatID   string    `json:"chatID"`
 	SentAt   time.Time `json:"sentAt"`
-	IsRead   bool      `json:"is_read"`
 }
 
 type Mutation struct {
 }
 
 type NewJobOffer struct {
-	JobType         string  `json:"job_type"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	Location        string  `json:"location"`
-	OfferedByuser   int32   `json:"offeredByuser"`
-	Category        string  `json:"category"`
-	SalaryRange     *string `json:"salary_range,omitempty"`
-	ExperienceLevel *string `json:"experience_level,omitempty"`
+	JobType          string `json:"job_type"`
+	Title            string `json:"title"`
+	Description      string `json:"description"`
+	Location         string `json:"location"`
+	OfferedByuser    int32  `json:"offeredByuser"`
+	Category         string `json:"category"`
+	ApplicationCount int32  `json:"applicationCount"`
 }
 
 type NewUser struct {
-	ID          string `json:"id"`
-	FirstName   string `json:"first_name"`
-	LastName    string `json:"last_name"`
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	PhoneNumber string `json:"phone_number"`
-	Address     string `json:"address"`
-	Role        string `json:"role"`
+	ID          string  `json:"id"`
+	FirstName   string  `json:"firstName"`
+	LastName    string  `json:"lastName"`
+	Email       string  `json:"email"`
+	Password    string  `json:"password"`
+	PhoneNumber string  `json:"phoneNumber"`
+	Address     string  `json:"address"`
+	Role        string  `json:"role"`
+	Plan        *string `json:"plan,omitempty"`
 }
 
 type Query struct {
@@ -143,25 +114,15 @@ type RejectionResponse struct {
 type Subscription struct {
 }
 
-type UpdateSettingsInput struct {
-	EmailNotifications *bool   `json:"email_notifications,omitempty"`
-	TwoFactorEnabled   *bool   `json:"two_factor_enabled,omitempty"`
-	ThemeAccent        *string `json:"theme_accent,omitempty"`
-	HudVisibility      *bool   `json:"hud_visibility,omitempty"`
-}
-
 type User struct {
-	ID               string  `json:"id"`
-	FirstName        string  `json:"first_name"`
-	LastName         string  `json:"last_name"`
-	Email            string  `json:"email"`
-	PhoneNumber      string  `json:"phone_number"`
-	Address          string  `json:"address"`
-	Role             string  `json:"role"`
-	Cv               *string `json:"cv,omitempty"`
-	IsActive         bool    `json:"is_active"`
-	IsVerified       bool    `json:"is_verified"`
-	TwoFactorEnabled bool    `json:"two_factor_enabled"`
-	ThemePreference  *string `json:"theme_preference,omitempty"`
-	CreatedAt        *string `json:"created_at,omitempty"`
+	ID          string  `json:"id"`
+	FirstName   string  `json:"firstName"`
+	LastName    string  `json:"lastName"`
+	Email       string  `json:"email"`
+	Password    string  `json:"password"`
+	PhoneNumber string  `json:"phoneNumber"`
+	Address     string  `json:"address"`
+	Role        string  `json:"role"`
+	Cv          *string `json:"cv,omitempty"`
+	IsActive    bool    `json:"isActive"`
 }

@@ -6,13 +6,11 @@ require (
 	github.com/99designs/gqlgen v0.17.89
 	github.com/cloudinary/cloudinary-go/v2 v2.14.0
 	github.com/joho/godotenv v1.5.1
-	github.com/pquerna/otp v1.5.0
 	github.com/vektah/gqlparser/v2 v2.5.32
 	golang.org/x/crypto v0.39.0
 )
 
 require (
-	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/creasty/defaults v1.7.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/gorilla/schema v1.4.1 // indirect

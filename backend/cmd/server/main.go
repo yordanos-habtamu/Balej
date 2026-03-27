@@ -22,7 +22,7 @@ import (
 	"github.com/yordanos-habtamu/GormWithGraphql/service/user"
 )
 
-const defaultPort = "7000"
+const defaultPort = "8000"
 
 func main() {
 	port := os.Getenv("PORT")
@@ -75,14 +75,27 @@ func main() {
 
 	// Setup router
 	r := mux.NewRouter()
-	r.Handle("/graphql", srv).Methods("GET", "POST", "OPTIONS")
-	r.Handle("/", playground.Handler("GraphQL Playground", "/graphql"))
+	r.Handle("/query", srv).Methods("GET", "POST", "OPTIONS")
+	r.Handle("/", playground.Handler("GraphQL Playground", "/query"))
 
 	// CORS middleware config — replace with your frontend URL
 	corsHandler := handlers.CORS(
-		handlers.AllowedOrigins([]string{"http://localhost:3000", "http://localhost:3001"}), // <-- frontend origin here
-		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"}),
-		handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
+		handlers.AllowedOrigins([]string{
+			"http://localhost:3000",
+			"http://localhost:3001",
+			"http://localhost:8000",
+		}),
+		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS", "PUT", "DELETE"}),
+		handlers.AllowedHeaders([]string{
+			"Content-Type",
+			"Authorization",
+			"X-Requested-With",
+			"Upgrade",
+			"Connection",
+			"Sec-Websocket-Key",
+			"Sec-Websocket-Version",
+			"Sec-Websocket-Extensions",
+		}),
 		handlers.AllowCredentials(),
 	)(r)
 

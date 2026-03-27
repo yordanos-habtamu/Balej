@@ -1,6 +1,18 @@
-# JobMatcher
+# JobMatcher ATS
 
-A fullstack application with a Go backend and Nuxt frontend.
+A fullstack Applicant Tracking System (ATS) with a Go backend and Nuxt frontend.
+
+## Overview
+
+JobMatcher is a modern, general-purpose Applicant Tracking System designed to help companies and recruiters manage their hiring process efficiently. The platform connects employers with job seekers across various industries including technology, healthcare, finance, education, marketing, and more.
+
+**Key Features:**
+- **General-Purpose Categories**: Supports 25+ industry categories for diverse hiring needs
+- **Modern Tech Stack**: GraphQL API with real-time capabilities
+- **User-Friendly Interface**: Beautiful, responsive design with Three.js animations
+- **Role-Based Access**: Admin, Client (Employer), and Talent (Job Seeker) roles
+- **Real-Time Communication**: Chat system with WebSocket subscriptions
+- **File Upload Support**: CV/resume upload with Cloudinary integration
 
 ## Structure
 
