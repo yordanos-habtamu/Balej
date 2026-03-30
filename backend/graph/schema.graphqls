@@ -46,6 +46,819 @@ input LoginInput {
   password: String!
 }
 
+input UpdateSettingsInput {
+  themeAccent: String
+}
+
+input UpdateProfileInput {
+  firstName: String
+  lastName: String
+  phoneNumber: String
+  address: String
+  cv: String
+}
+
+enum NotificationType {
+  TRANSACTIONAL
+  BROADCAST
+  NEWSLETTER
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  CRITICAL
+}
+
+enum SenderProvider {
+  SMTP
+  SendGrid
+  Mailgun
+  AWS_SES
+}
+
+enum NewsletterStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+}
+
+enum ComplianceRequestType {
+  EXPORT
+  DELETION
+}
+
+type ComplianceRequest {
+  id: ID!
+  userId: ID!
+  type: ComplianceRequestType!
+  status: String!
+  notes: String
+  createdAt: DateTime!
+}
+
+type ComplianceJob {
+  id: ID!
+  requestId: ID!
+  type: ComplianceRequestType!
+  status: String!
+  result: String
+  completedAt: DateTime
+  createdAt: DateTime!
+}
+
+input ComplianceRequestInput {
+  type: ComplianceRequestType!
+  notes: String
+}
+
+input ComplianceRequestUpdateInput {
+  status: String!
+  notes: String
+}
+
+input ComplianceJobUpdateInput {
+  status: String!
+  result: String
+}
+
+type Role {
+  id: ID!
+  name: String!
+  summary: String
+  isSystem: Boolean!
+  permissions: [Permission!]!
+}
+
+type Permission {
+  id: ID!
+  key: String!
+  description: String
+}
+
+type TalentProfile {
+  id: ID!
+  userId: ID!
+  professionalTitle: String
+  bio: String
+  location: String
+  profileImageUrl: String
+  isPublic: Boolean!
+  viewCount: Int!
+  completionPercent: Int!
+  skills: [Skill!]!
+  experiences: [Experience!]!
+  workSamples: [WorkSample!]!
+}
+
+type Skill {
+  id: ID!
+  profileId: ID!
+  skillName: String!
+  proficiencyLevel: String
+  category: String
+}
+
+type Experience {
+  id: ID!
+  profileId: ID!
+  jobTitle: String!
+  companyName: String!
+  startDate: DateTime!
+  endDate: DateTime
+  description: String
+  isCurrent: Boolean!
+}
+
+type WorkSample {
+  id: ID!
+  profileId: ID!
+  title: String
+  description: String
+  imageUrl: String!
+  externalLink: String
+  displayOrder: Int!
+}
+
+type Project {
+  id: ID!
+  ownerId: ID!
+  owner: User!
+  title: String!
+  description: String
+  status: String!
+  isPublic: Boolean!
+  coverImage: String
+  summary: String
+  viewCount: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  members: [ProjectMember!]!
+  invitations: [ProjectInvitation!]!
+}
+
+type ProjectMember {
+  id: ID!
+  projectId: ID!
+  userId: ID!
+  role: String!
+  joinedAt: DateTime!
+  user: User!
+}
+
+type ProjectInvitation {
+  id: ID!
+  projectId: ID!
+  inviterId: ID!
+  inviteeId: ID
+  inviteeEmail: String
+  role: String!
+  status: String!
+  message: String
+  createdAt: DateTime!
+  expiresAt: DateTime
+  resendCount: Int!
+  respondedAt: DateTime
+}
+
+type ProjectActivity {
+  id: ID!
+  projectId: ID!
+  actorId: ID
+  action: String!
+  details: String
+  createdAt: DateTime!
+}
+
+type ProjectTask {
+  id: ID!
+  projectId: ID!
+  title: String!
+  description: String
+  status: String!
+  priority: String!
+  assigneeId: ID
+  dueDate: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ProjectDeliverable {
+  id: ID!
+  projectId: ID!
+  title: String!
+  description: String
+  status: String!
+  dueDate: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ProjectSubmission {
+  id: ID!
+  projectId: ID!
+  deliverableId: ID!
+  submitterId: ID!
+  content: String
+  fileUrl: String
+  status: String!
+  reviewedBy: ID
+  reviewedAt: DateTime
+  feedback: String
+  createdAt: DateTime!
+}
+
+type FileAsset {
+  id: ID!
+  ownerId: ID!
+  projectId: ID
+  chatId: ID
+  context: String!
+  fileName: String!
+  fileUrl: String!
+  fileType: String
+  fileSize: Int!
+  tags: String
+  createdAt: DateTime!
+}
+
+type ProjectChat {
+  id: ID!
+  projectId: ID!
+  chatId: ID!
+  createdAt: DateTime!
+}
+
+type ProjectCallSummary {
+  session: VideoSession!
+  participantCount: Int!
+  inviteCount: Int!
+}
+
+type ProjectCallDetail {
+  session: VideoSession!
+  participants: [VideoSessionParticipant!]!
+  invites: [VideoSessionInvite!]!
+}
+
+type PublicTalentPage {
+  items: [TalentProfile!]!
+  nextCursor: String
+}
+
+type PublicProjectPage {
+  items: [Project!]!
+  nextCursor: String
+}
+
+type ProjectCallStatusCount {
+  status: String!
+  count: Int!
+}
+
+type ChatPage {
+  messages: [Message!]!
+  nextCursor: String
+}
+
+type VideoSession {
+  id: ID!
+  projectId: ID
+  chatId: ID
+  hostId: ID!
+  title: String!
+  meetingUrl: String
+  status: String!
+  scheduledAt: DateTime!
+  startedAt: DateTime
+  endedAt: DateTime
+  recordingUrl: String
+  createdAt: DateTime!
+}
+
+type VideoSessionParticipant {
+  id: ID!
+  sessionId: ID!
+  userId: ID!
+  role: String!
+  status: String!
+  joinedAt: DateTime
+}
+
+type VideoSessionInvite {
+  id: ID!
+  sessionId: ID!
+  inviterId: ID!
+  inviteeId: ID
+  inviteeEmail: String
+  status: String!
+  message: String
+  createdAt: DateTime!
+  respondedAt: DateTime
+}
+
+type Organization {
+  id: ID!
+  ownerId: ID!
+  name: String!
+  industry: String
+  size: String
+  website: String
+  description: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type OrganizationMember {
+  id: ID!
+  organizationId: ID!
+  userId: ID!
+  role: String!
+  joinedAt: DateTime!
+}
+
+type OrganizationInvite {
+  id: ID!
+  organizationId: ID!
+  inviterId: ID!
+  inviteeId: ID
+  inviteeEmail: String
+  status: String!
+  message: String
+  createdAt: DateTime!
+  respondedAt: DateTime
+}
+
+type OrganizationActivity {
+  id: ID!
+  organizationId: ID!
+  actorId: ID
+  action: String!
+  details: String
+  createdAt: DateTime!
+}
+
+type BillingSubscription {
+  id: ID!
+  organizationId: ID!
+  plan: String!
+  status: String!
+  renewsAt: DateTime
+  seats: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type BillingInvoice {
+  id: ID!
+  organizationId: ID!
+  amountCents: Int!
+  currency: String!
+  status: String!
+  periodStart: DateTime
+  periodEnd: DateTime
+  invoiceUrl: String
+  issuedAt: DateTime!
+}
+
+type BillingPaymentMethod {
+  id: ID!
+  organizationId: ID!
+  type: String!
+  last4: String
+  brand: String
+  expiryMonth: Int
+  expiryYear: Int
+  isDefault: Boolean!
+  createdAt: DateTime!
+}
+
+type BillingEvent {
+  id: ID!
+  organizationId: ID!
+  actorId: ID
+  type: String!
+  details: String
+  createdAt: DateTime!
+}
+
+type FeatureFlag {
+  id: ID!
+  key: String!
+  enabled: Boolean!
+  description: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type SkillCategory {
+  id: ID!
+  name: String!
+  description: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type CompliancePolicy {
+  id: ID!
+  title: String!
+  content: String!
+  status: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ComplianceLog {
+  id: ID!
+  actorId: ID
+  action: String!
+  details: String
+  createdAt: DateTime!
+}
+
+type ModerationResolution {
+  id: ID!
+  flagId: ID!
+  action: String!
+  notes: String
+  resolvedBy: ID!
+  resolvedAt: DateTime!
+}
+
+type AdminStats {
+  users: Int!
+  talents: Int!
+  clients: Int!
+  jobs: Int!
+  projects: Int!
+  applications: Int!
+}
+
+input TalentProfileInput {
+  professionalTitle: String
+  bio: String
+  location: String
+  profileImageUrl: String
+  completionPercent: Int
+  isPublic: Boolean
+}
+
+input SkillInput {
+  profileId: ID
+  skillName: String!
+  proficiencyLevel: String
+  category: String
+}
+
+input SkillUpdateInput {
+  skillName: String
+  proficiencyLevel: String
+  category: String
+}
+
+input ExperienceInput {
+  profileId: ID
+  jobTitle: String!
+  companyName: String!
+  startDate: DateTime!
+  endDate: DateTime
+  description: String
+  isCurrent: Boolean = false
+}
+
+input ExperienceUpdateInput {
+  jobTitle: String
+  companyName: String
+  startDate: DateTime
+  endDate: DateTime
+  description: String
+  isCurrent: Boolean
+}
+
+input WorkSampleInput {
+  profileId: ID
+  title: String
+  description: String
+  imageUrl: String!
+  externalLink: String
+  displayOrder: Int = 0
+}
+
+input WorkSampleUpdateInput {
+  title: String
+  description: String
+  imageUrl: String
+  externalLink: String
+  displayOrder: Int
+}
+
+input ProjectInput {
+  title: String!
+  description: String
+  status: String = "ACTIVE"
+  isPublic: Boolean = false
+  coverImage: String
+  summary: String
+}
+
+input ProjectUpdateInput {
+  title: String
+  description: String
+  status: String
+  isPublic: Boolean
+  coverImage: String
+  summary: String
+}
+
+input ProjectInviteInput {
+  projectId: ID!
+  inviteeId: ID
+  inviteeEmail: String
+  role: String = "COLLABORATOR"
+  message: String
+}
+
+input ProjectPermissionsInput {
+  role: String!
+}
+
+input ProjectTaskInput {
+  projectId: ID!
+  title: String!
+  description: String
+  status: String
+  priority: String
+  assigneeId: ID
+  dueDate: DateTime
+}
+
+input ProjectTaskUpdateInput {
+  title: String
+  description: String
+  status: String
+  priority: String
+  assigneeId: ID
+  dueDate: DateTime
+}
+
+input ProjectDeliverableInput {
+  projectId: ID!
+  title: String!
+  description: String
+  status: String
+  dueDate: DateTime
+}
+
+input ProjectDeliverableUpdateInput {
+  title: String
+  description: String
+  status: String
+  dueDate: DateTime
+}
+
+input ProjectSubmissionInput {
+  deliverableId: ID!
+  content: String
+  fileUrl: String
+}
+
+input ProjectSubmissionReviewInput {
+  status: String!
+  feedback: String
+}
+
+input FileUploadInput {
+  file: Upload!
+  context: String = "GENERAL"
+  projectId: ID
+  chatId: ID
+  tags: String
+}
+
+input FileTagsInput {
+  tags: String!
+}
+
+input VideoSessionInput {
+  title: String!
+  scheduledAt: DateTime!
+  projectId: ID
+  chatId: ID
+  meetingUrl: String
+}
+
+input VideoSessionStatusInput {
+  status: String!
+}
+
+input VideoSessionInviteInput {
+  sessionId: ID!
+  inviteeId: ID
+  inviteeEmail: String
+  message: String
+}
+
+input OrganizationInput {
+  name: String!
+  industry: String
+  size: String
+  website: String
+  description: String
+}
+
+input OrganizationUpdateInput {
+  name: String
+  industry: String
+  size: String
+  website: String
+  description: String
+}
+
+input OrganizationInviteInput {
+  inviteeId: ID
+  inviteeEmail: String
+  message: String
+}
+
+input BillingSubscriptionInput {
+  plan: String
+  status: String
+  renewsAt: DateTime
+  seats: Int
+}
+
+input BillingPaymentMethodInput {
+  type: String!
+  last4: String
+  brand: String
+  expiryMonth: Int
+  expiryYear: Int
+  isDefault: Boolean = false
+}
+
+input BillingInvoiceMockInput {
+  amountCents: Int!
+  currency: String = "USD"
+}
+
+input BillingInvoiceStatusInput {
+  status: String!
+}
+
+input FeatureFlagInput {
+  key: String!
+  enabled: Boolean!
+  description: String
+}
+
+input SkillCategoryInput {
+  name: String!
+  description: String
+}
+
+input CompliancePolicyInput {
+  title: String!
+  content: String!
+  status: String = "ACTIVE"
+}
+
+input CompliancePolicyUpdateInput {
+  id: ID!
+  title: String
+  content: String
+  status: String
+}
+
+input RoleInput {
+  name: String!
+  summary: String
+  isSystem: Boolean = false
+}
+
+input RoleUpdateInput {
+  name: String
+  summary: String
+  isSystem: Boolean
+}
+
+input PermissionInput {
+  key: String!
+  description: String
+}
+
+type Newsletter {
+  id: ID!
+  subject: String!
+  preheader: String
+  content: String!
+  segment: String!
+  status: NewsletterStatus!
+  scheduledAt: DateTime
+  sentAt: DateTime
+  createdAt: DateTime!
+}
+
+input NewsletterInput {
+  subject: String!
+  preheader: String
+  content: String!
+  segment: String = "all"
+}
+
+input NewsletterUpdateInput {
+  subject: String
+  preheader: String
+  content: String
+  segment: String
+  status: NewsletterStatus
+}
+
+type EmailSenderProfile {
+  id: ID!
+  label: String!
+  email: String!
+  provider: SenderProvider!
+  isActive: Boolean!
+  createdAt: DateTime!
+}
+
+type EmailRoutingConfig {
+  id: ID!
+  notificationsSenderId: ID
+  announcementsSenderId: ID
+  newslettersSenderId: ID
+}
+
+type EmailTemplate {
+  id: ID!
+  name: String!
+  trigger: String!
+  subject: String!
+  body: String!
+  channel: String!
+  status: String!
+}
+
+type Announcement {
+  id: ID!
+  title: String!
+  content: String!
+  category: String!
+  priority: String!
+  author: String!
+  createdAt: DateTime!
+}
+
+input EmailSenderProfileInput {
+  label: String!
+  email: String!
+  password: String
+  apiKey: String
+  provider: SenderProvider!
+  isActive: Boolean = true
+}
+
+input EmailSenderProfileUpdateInput {
+  label: String
+  email: String
+  password: String
+  apiKey: String
+  provider: SenderProvider
+  isActive: Boolean
+}
+
+input EmailRoutingInput {
+  notificationsSenderId: ID
+  announcementsSenderId: ID
+  newslettersSenderId: ID
+}
+
+input EmailTemplateInput {
+  name: String!
+  trigger: String!
+  subject: String!
+  body: String!
+  channel: String = "EMAIL"
+  status: String = "DRAFT"
+}
+
+input EmailTemplateUpdateInput {
+  name: String
+  trigger: String
+  subject: String
+  body: String
+  channel: String
+  status: String
+}
+
+input AnnouncementInput {
+  title: String!
+  content: String!
+  category: String!
+  priority: String = "standard"
+  author: String = "ADMIN_CONSOLE"
+}
+
 type ApprovalResponse{
   response:String!
 }
@@ -63,8 +876,49 @@ type Message {
    senderId:Int!
    chatID:String!
    sentAt:Time!
+   isRead:Boolean!
+   isFile:Boolean!
+   fileUrl:String
+   fileName:String
 }
 
+type Chat {
+  id: ID!
+}
+
+type Flag {
+  id: ID!
+  targetType: String!
+  targetId: String!
+  reason: String!
+  status: String!
+}
+
+type AuditLog {
+  id: ID!
+  action: String!
+  targetId: String
+  timestamp: DateTime!
+  metadata: String
+}
+
+type RTCSignal {
+  signal: String!
+  type: String!
+  senderId: Int!
+}
+
+type Notification {
+  id: ID!
+  title: String!
+  content: String!
+  type: NotificationType!
+  priority: NotificationPriority!
+  isRead: Boolean!
+  actionUrl: String
+  createdAt: DateTime!
+  expiresAt: DateTime
+}
 
 
 type ApplicationResponse{
@@ -77,12 +931,14 @@ type User{
   firstName: String!
   lastName: String!
   email: String!
-  password: String!
   phoneNumber: String!
   address: String!
   role: String!
   cv: String
   isActive: Boolean!
+  isVerified: Boolean!
+  twoFactorEnabled: Boolean!
+  themePreference: String
 }
 
 type JobOffer{
@@ -94,6 +950,7 @@ type JobOffer{
 	offeredByuser: User!     
 	category :String!    
 	applicationCount:Int!    
+  salaryRange:String
 }
 
 type Applicants{
@@ -102,6 +959,7 @@ type Applicants{
 	applied_at:DateTime!      
 	status:String!
 	resume:String!           
+  proposal:String
 }
 input JobApplicantFilter {
   job_offer_id: Int
@@ -114,26 +972,244 @@ input JobFilter {
   user_id: Int
   category:String
 }
+
+input ApplicationTimelineFilter {
+  action: String
+}
+
+input PublicTalentFilter {
+  skill: String
+  skills: [String!]
+  location: String
+  title: String
+  sort: String
+  limit: Int = 20
+  offset: Int = 0
+}
+
+input PublicProjectFilter {
+  category: String
+  status: String
+  ownerId: ID
+  sort: String
+  limit: Int = 20
+  offset: Int = 0
+}
+
+type ApplicationNote {
+  id: ID!
+  jobId: ID!
+  userId: ID!
+  authorId: ID!
+  note: String!
+  createdAt: DateTime!
+}
+
+type ApplicationEvent {
+  id: ID!
+  jobId: ID!
+  userId: ID!
+  actorId: ID
+  action: String!
+  details: String
+  createdAt: DateTime!
+}
+
+input JobUpdateInput {
+  job_type: String
+  title: String
+  description: String
+  location: String
+  category: String
+  salaryRange: String
+  experienceLevel: String
+  status: String
+}
 type Query {
   users : [User!]!
   user(id: ID!): User
+  me: User
   jobs : [JobOffer!]!
+  job(id: ID!): JobOffer
   jobsWithFilter(filter:JobFilter):[JobOffer!]!
   applicants:[Applicants!]!
   applicantsWithfilter(filter:JobApplicantFilter):[Applicants!]!
+  application(jobId: ID!, userId: ID!): Applicants
+  applicationNotes(jobId: ID!, userId: ID!): [ApplicationNote!]!
+  applicationTimeline(jobId: ID!, userId: ID!, filter: ApplicationTimelineFilter): [ApplicationEvent!]!
+  myChats: [Chat!]!
+  chatHistory(chatID: ID!): [Message!]!
+  moderationQueue: [Flag!]!
+  auditTrail: [AuditLog!]!
+  notifications: [Notification!]!
+  emailSenderProfiles: [EmailSenderProfile!]!
+  emailRoutingConfig: EmailRoutingConfig!
+  emailTemplates: [EmailTemplate!]!
+  announcements: [Announcement!]!
+  newsletters: [Newsletter!]!
+  complianceRequests(type: ComplianceRequestType): [ComplianceRequest!]!
+  complianceJobs(status: String): [ComplianceJob!]!
+  roles: [Role!]!
+  permissions: [Permission!]!
+  myTalentProfile: TalentProfile
+  talentProfile(userId: ID!): TalentProfile
+  projects: [Project!]!
+  project(id: ID!): Project
+  myProjectInvitations: [ProjectInvitation!]!
+  projectInvitations(projectId: ID!): [ProjectInvitation!]!
+  projectActivity(projectId: ID!, limit: Int = 50): [ProjectActivity!]!
+  projectTasks(projectId: ID!): [ProjectTask!]!
+  projectDeliverables(projectId: ID!): [ProjectDeliverable!]!
+  projectSubmissions(projectId: ID!, deliverableId: ID): [ProjectSubmission!]!
+  myFiles: [FileAsset!]!
+  projectFiles(projectId: ID!): [FileAsset!]!
+  chatFiles(chatId: ID!): [FileAsset!]!
+  myVideoSessions: [VideoSession!]!
+  projectVideoSessions(projectId: ID!): [VideoSession!]!
+  videoSessionParticipants(sessionId: ID!): [VideoSessionParticipant!]!
+  videoSessionInvites(sessionId: ID!): [VideoSessionInvite!]!
+  myVideoInvites: [VideoSessionInvite!]!
+  myOrganization: Organization
+  organizationMembers: [OrganizationMember!]!
+  organizationInvites: [OrganizationInvite!]!
+  organizationActivity(limit: Int = 50): [OrganizationActivity!]!
+  billingSubscription: BillingSubscription
+  billingInvoices: [BillingInvoice!]!
+  billingPaymentMethods: [BillingPaymentMethod!]!
+  billingEvents: [BillingEvent!]!
+  projectChats(projectId: ID!): [ProjectChat!]!
+  projectChatMessages(projectId: ID!, limit: Int = 50, offset: Int = 0, order: String = "DESC"): [Message!]!
+  projectChatMessagesByChat(projectId: ID!, chatId: ID!, limit: Int = 50, offset: Int = 0, order: String = "DESC"): [Message!]!
+  projectChatMessagesPage(projectId: ID!, first: Int = 50, after: String): ChatPage!
+  projectCallSummaries(projectId: ID!, status: String): [ProjectCallSummary!]!
+  projectCallStatusCounts(projectId: ID!): [ProjectCallStatusCount!]!
+  projectCallDetails(projectId: ID!, status: String): [ProjectCallDetail!]!
+  adminStats: AdminStats!
+  featureFlags: [FeatureFlag!]!
+  skillCategories: [SkillCategory!]!
+  compliancePolicies: [CompliancePolicy!]!
+  complianceLogs: [ComplianceLog!]!
+  moderationResolutions(flagId: ID!): [ModerationResolution!]!
+  publicTalents(filter: PublicTalentFilter): [TalentProfile!]!
+  publicTalentsPage(filter: PublicTalentFilter, first: Int = 20, after: String): PublicTalentPage!
+  publicTalent(userId: ID!): TalentProfile
+  publicProjects(filter: PublicProjectFilter): [Project!]!
+  publicProjectsPage(filter: PublicProjectFilter, first: Int = 20, after: String): PublicProjectPage!
+  publicProject(id: ID!): Project
 }
 
 type Subscription {
   messageSent(chatID:ID!):Message!
+  newNotification: String!
+  rtcSignalSent(chatID:ID!): RTCSignal!
+  auditLogCreated: AuditLog!
 }
 
 type Mutation {
  createUser(input: NewUser!): User!
  LoginUser(input : LoginInput): AuthPayload!
  Register(input: NewUser!): User!
- AddJobOffer(input :NewJobOffer!): JobOffer!
- ApplyToJob(input: JobApplication!):ApplicationResponse!
+ VerifyEmail(token: String!): Boolean!
+ Enable2FA: String!
+ UpdateNeuralSettings(input: UpdateSettingsInput!): User!
+ UpdateProfile(input: UpdateProfileInput!): User!
+ ChangePassword(currentPassword: String!, newPassword: String!): Boolean!
+  AddJobOffer(input :NewJobOffer!): JobOffer!
+  UpdateJobDetails(jobID: ID!, input: JobUpdateInput!): JobOffer!
+  UpdateJobStatus(jobID: ID!, status: String!): JobOffer!
+  DeleteJob(jobID: ID!): Boolean!
+  ApplyToJob(input: JobApplication!):ApplicationResponse!
+  UpdateApplicationStatus(jobId: ID!, userId: ID!, status: String!): Applicants!
+  WithdrawApplication(jobId: ID!): Applicants!
+  AddApplicationNote(jobId: ID!, userId: ID!, note: String!): ApplicationNote!
+  AddTalentApplicationNote(jobId: ID!, note: String!): ApplicationNote!
  ApproveApplication(input:Approval!):ApprovalResponse!
  RejectApplication(input:Approval!):RejectionResponse!
  SendMessage(chatID:String!, content:String!,senderId:Int!,recieverId:Int!): Message!
+ CreateChat(participantID: Int!): Chat!
+ FlagTarget(targetType: String!, targetID: String!, reason: String!): Flag!
+  ResolveFlag(flagID: ID!, action: String!, notes: String): Boolean!
+ SendRTCSignal(chatID: ID!, signal: String!, typeArg: String!): Boolean!
+ GenerateSecureJobLink(jobID: ID!): String!
+ VerifySecureJobLink(token: String!): JobOffer!
+  CreateNotification(userId: ID!, title: String!, content: String!, type: NotificationType = TRANSACTIONAL, priority: NotificationPriority = NORMAL, actionUrl: String, expiresAt: DateTime): Notification!
+  MarkNotificationRead(id: ID!, read: Boolean!): Notification!
+  CreateEmailSenderProfile(input: EmailSenderProfileInput!): EmailSenderProfile!
+  UpdateEmailSenderProfile(id: ID!, input: EmailSenderProfileUpdateInput!): EmailSenderProfile!
+  DeleteEmailSenderProfile(id: ID!): Boolean!
+  UpdateEmailRoutingConfig(input: EmailRoutingInput!): EmailRoutingConfig!
+  CreateEmailTemplate(input: EmailTemplateInput!): EmailTemplate!
+  UpdateEmailTemplate(id: ID!, input: EmailTemplateUpdateInput!): EmailTemplate!
+  DeleteEmailTemplate(id: ID!): Boolean!
+  CreateAnnouncement(input: AnnouncementInput!): Announcement!
+  CreateNewsletter(input: NewsletterInput!): Newsletter!
+  UpdateNewsletter(id: ID!, input: NewsletterUpdateInput!): Newsletter!
+  ScheduleNewsletter(id: ID!, scheduledAt: DateTime!): Newsletter!
+  SendNewsletterNow(id: ID!): Newsletter!
+  CreateComplianceRequest(input: ComplianceRequestInput!): ComplianceRequest!
+  UpdateComplianceRequest(id: ID!, input: ComplianceRequestUpdateInput!): ComplianceRequest!
+  EnqueueComplianceJob(requestId: ID!): ComplianceJob!
+  UpdateComplianceJob(id: ID!, input: ComplianceJobUpdateInput!): ComplianceJob!
+  CreateRole(input: RoleInput!): Role!
+  UpdateRole(id: ID!, input: RoleUpdateInput!): Role!
+  DeleteRole(id: ID!): Boolean!
+  CreatePermission(input: PermissionInput!): Permission!
+  SetRolePermissions(roleId: ID!, permissionIds: [ID!]!): Role!
+  UpsertTalentProfile(input: TalentProfileInput!): TalentProfile!
+  AddSkill(input: SkillInput!): Skill!
+  UpdateSkill(id: ID!, input: SkillUpdateInput!): Skill!
+  DeleteSkill(id: ID!): Boolean!
+  AddExperience(input: ExperienceInput!): Experience!
+  UpdateExperience(id: ID!, input: ExperienceUpdateInput!): Experience!
+  DeleteExperience(id: ID!): Boolean!
+  AddWorkSample(input: WorkSampleInput!): WorkSample!
+  UpdateWorkSample(id: ID!, input: WorkSampleUpdateInput!): WorkSample!
+  DeleteWorkSample(id: ID!): Boolean!
+  CreateProject(input: ProjectInput!): Project!
+  UpdateProject(id: ID!, input: ProjectUpdateInput!): Project!
+  DeleteProject(id: ID!): Boolean!
+  InviteToProject(input: ProjectInviteInput!): ProjectInvitation!
+  RespondToProjectInvitation(id: ID!, accept: Boolean!): ProjectInvitation!
+  RemoveProjectMember(projectId: ID!, memberId: ID!): Boolean!
+  ResendProjectInvitation(id: ID!): ProjectInvitation!
+  UpdateProjectMemberRole(projectId: ID!, memberId: ID!, role: String!): ProjectMember!
+  CreateProjectTask(input: ProjectTaskInput!): ProjectTask!
+  UpdateProjectTask(id: ID!, input: ProjectTaskUpdateInput!): ProjectTask!
+  DeleteProjectTask(id: ID!): Boolean!
+  CreateProjectDeliverable(input: ProjectDeliverableInput!): ProjectDeliverable!
+  UpdateProjectDeliverable(id: ID!, input: ProjectDeliverableUpdateInput!): ProjectDeliverable!
+  DeleteProjectDeliverable(id: ID!): Boolean!
+  SubmitProjectDeliverable(input: ProjectSubmissionInput!): ProjectSubmission!
+  ReviewProjectSubmission(id: ID!, input: ProjectSubmissionReviewInput!): ProjectSubmission!
+  UploadFile(input: FileUploadInput!): FileAsset!
+  CreateVideoSession(input: VideoSessionInput!): VideoSession!
+  UpdateVideoSessionStatus(id: ID!, input: VideoSessionStatusInput!): VideoSession!
+  AddVideoRecording(id: ID!, recordingUrl: String!): VideoSession!
+  InviteToVideoSession(input: VideoSessionInviteInput!): VideoSessionInvite!
+  RespondToVideoSessionInvite(id: ID!, accept: Boolean!): VideoSessionInvite!
+  UpsertOrganization(input: OrganizationInput!): Organization!
+  UpdateOrganization(input: OrganizationUpdateInput!): Organization!
+  InviteOrganizationMember(input: OrganizationInviteInput!): OrganizationInvite!
+  RespondToOrganizationInvite(id: ID!, accept: Boolean!): OrganizationInvite!
+  RemoveOrganizationMember(memberId: ID!): Boolean!
+  UpdateOrganizationMemberRole(memberId: ID!, role: String!): OrganizationMember!
+  UpdateBillingSubscription(input: BillingSubscriptionInput!): BillingSubscription!
+  AddBillingPaymentMethod(input: BillingPaymentMethodInput!): BillingPaymentMethod!
+  SetDefaultBillingPaymentMethod(id: ID!): BillingPaymentMethod!
+  DeleteBillingPaymentMethod(id: ID!): Boolean!
+  CreateMockInvoice(input: BillingInvoiceMockInput!): BillingInvoice!
+  UpdateInvoiceStatus(id: ID!, input: BillingInvoiceStatusInput!): BillingInvoice!
+  CreateProjectChat(projectId: ID!, participantId: ID!): ProjectChat!
+  UpdateFileTags(id: ID!, input: FileTagsInput!): FileAsset!
+  DeleteFile(id: ID!): Boolean!
+  UpsertFeatureFlag(input: FeatureFlagInput!): FeatureFlag!
+  DeleteFeatureFlag(id: ID!): Boolean!
+  UpsertSkillCategory(input: SkillCategoryInput!): SkillCategory!
+  DeleteSkillCategory(id: ID!): Boolean!
+  UpsertCompliancePolicy(input: CompliancePolicyInput!): CompliancePolicy!
+  UpdateCompliancePolicy(input: CompliancePolicyUpdateInput!): CompliancePolicy!
+  DeleteCompliancePolicy(id: ID!): Boolean!
+  SetProjectPublic(id: ID!, isPublic: Boolean!): Project!
+  SetTalentPublic(isPublic: Boolean!): TalentProfile!
+  IncrementProjectView(projectId: ID!): Project!
 }

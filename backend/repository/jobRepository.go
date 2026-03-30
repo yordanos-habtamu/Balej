@@ -13,10 +13,17 @@ type JobRepository interface {
 	FindAllApplicants() ([]*models.JobApplicant, error)
 	FindByID(id uint) (*models.JobOffer, error)
 	Update(job *models.JobOffer) error
+	Delete(id uint) error
 	FindApplicantByID(id uint) (*models.JobApplicant, error)
+	FindApplicant(jobOfferID uint, userID uint) (*models.JobApplicant, error)
 	CreateApplication(job *models.JobApplicant) (*models.JobApplicant,error)
 	ApproveApplication(job *models.JobApplicant) error
 	RejectApplication(job *models.JobApplicant) error
+	UpdateApplicationStatus(jobOfferID uint, userID uint, status string) error
+	CreateApplicationNote(note *models.JobApplicationNote) (*models.JobApplicationNote, error)
+	ListApplicationNotes(jobOfferID uint, userID uint) ([]*models.JobApplicationNote, error)
+	CreateApplicationEvent(event *models.JobApplicationEvent) (*models.JobApplicationEvent, error)
+	ListApplicationEvents(jobOfferID uint, userID uint) ([]*models.JobApplicationEvent, error)
 	SearchJobOffers(filter *models.JobFilter) ([]*models.JobOffer, error)
 	SearchJobApplicants(filter *models.JobApplicantFilter) ([]*models.JobApplicant, error)
 }
@@ -49,6 +56,10 @@ func (r *jobRepo) FindByID(id uint) (*models.JobOffer, error) {
     return &jobOffer, nil
 }
 
+func (r *jobRepo) Delete(id uint) error {
+	return r.db.Delete(&models.JobOffer{}, id).Error
+}
+
 func (r *jobRepo) CreateApplication(job *models.JobApplicant) (*models.JobApplicant,error) {
 	log.Printf("Creating job application in service: %+v", job)
     if err := r.db.Create(job).Error; err != nil {
@@ -61,6 +72,14 @@ func (r *jobRepo) FindApplicantByID(id uint) (*models.JobApplicant, error) {
 	var applicant models.JobApplicant
 	if err := r.db.Where("user_id = ?", id).First(&applicant).Error; err != nil {
 		log.Printf("Error finding job applicant by ID %d: %v", id, err)
+		return nil, err
+	}
+	return &applicant, nil
+}
+
+func (r *jobRepo) FindApplicant(jobOfferID uint, userID uint) (*models.JobApplicant, error) {
+	var applicant models.JobApplicant
+	if err := r.db.Where("job_offer_id = ? AND user_id = ?", jobOfferID, userID).First(&applicant).Error; err != nil {
 		return nil, err
 	}
 	return &applicant, nil
@@ -81,6 +100,15 @@ func (r *jobRepo) RejectApplication(job *models.JobApplicant) error {
 	}
 	return nil
 }
+
+func (r *jobRepo) UpdateApplicationStatus(jobOfferID uint, userID uint, status string) error {
+	if err := r.db.Model(&models.JobApplicant{}).
+		Where("job_offer_id = ? AND user_id = ?", jobOfferID, userID).
+		Update("status", status).Error; err != nil {
+		return err
+	}
+	return nil
+}
 func (r *jobRepo) FindAllApplicants() ([]*models.JobApplicant, error) {
 	var applicants []*models.JobApplicant
 	err := r.db.Find(&applicants).Error
@@ -89,6 +117,38 @@ func (r *jobRepo) FindAllApplicants() ([]*models.JobApplicant, error) {
 		return nil, err
 	}
 	return applicants, nil
+}
+
+func (r *jobRepo) CreateApplicationNote(note *models.JobApplicationNote) (*models.JobApplicationNote, error) {
+	if err := r.db.Create(note).Error; err != nil {
+		return nil, err
+	}
+	return note, nil
+}
+
+func (r *jobRepo) ListApplicationNotes(jobOfferID uint, userID uint) ([]*models.JobApplicationNote, error) {
+	var notes []*models.JobApplicationNote
+	if err := r.db.Where("job_offer_id = ? AND user_id = ?", jobOfferID, userID).
+		Order("created_at desc").Find(&notes).Error; err != nil {
+		return nil, err
+	}
+	return notes, nil
+}
+
+func (r *jobRepo) CreateApplicationEvent(event *models.JobApplicationEvent) (*models.JobApplicationEvent, error) {
+	if err := r.db.Create(event).Error; err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
+func (r *jobRepo) ListApplicationEvents(jobOfferID uint, userID uint) ([]*models.JobApplicationEvent, error) {
+	var events []*models.JobApplicationEvent
+	if err := r.db.Where("job_offer_id = ? AND user_id = ?", jobOfferID, userID).
+		Order("created_at asc").Find(&events).Error; err != nil {
+		return nil, err
+	}
+	return events, nil
 }
 
 func (r *jobRepo) SearchJobOffers(filter *models.JobFilter) ([]*models.JobOffer, error) {

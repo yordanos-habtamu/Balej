@@ -8,10 +8,13 @@ package graph
 import (
 	"context"
 	"fmt"
+	"encoding/base64"
 	"log"
-	"math/rand"
+	"os"
 	"runtime/debug"
 	"strconv"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,35 +27,42 @@ import (
 
 // CreateUser is the resolver for the createUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
-	// Map input to models.User for the service layer
-
-	user := &model.User{
-		ID:          strconv.Itoa(rand.Int()),
-		FirstName:   input.FirstName,
-		LastName:    input.LastName,
-		Email:       input.Email,
-		PhoneNumber: input.PhoneNumber,
-		Address:     input.Address,
-		Role:        input.Role,
-		IsActive:    true,
+	hashedPassword, err := helpers.HashPassword(input.Password)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	userModel := &models.User{
-		FirstName:   user.FirstName,
-		LastName:    user.LastName,
-		Email:       user.Email,
-		Password:    input.Password,
-		PhoneNumber: user.PhoneNumber,
-		Address:     user.Address,
-		Role:        user.Role,
-		IsActive:    true,
+		FirstName:         input.FirstName,
+		LastName:          input.LastName,
+		Email:             input.Email,
+		Password:          string(hashedPassword),
+		PhoneNumber:       input.PhoneNumber,
+		Address:           input.Address,
+		Role:              input.Role,
+		IsActive:          true,
+		IsVerified:        false,
+		VerificationToken: uuid.New().String(),
 	}
 
 	if err := r.UserService.Create(userModel); err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	return &model.User{
+		ID:               strconv.Itoa(int(userModel.ID)),
+		FirstName:        userModel.FirstName,
+		LastName:         userModel.LastName,
+		Email:            userModel.Email,
+		PhoneNumber:      userModel.PhoneNumber,
+		Address:          userModel.Address,
+		Role:             userModel.Role,
+		Cv:               &userModel.CV,
+		IsActive:         userModel.IsActive,
+		IsVerified:       userModel.IsVerified,
+		TwoFactorEnabled: userModel.TwoFactorEnabled,
+		ThemePreference:  &userModel.ThemePreference,
+	}, nil
 }
 
 // LoginUser is the resolver for the LoginUser field.
@@ -70,7 +80,7 @@ func (r *mutationResolver) LoginUser(ctx context.Context, input *model.LoginInpu
 		return nil, fmt.Errorf("identity pending verification: confirm your email to activate sector access")
 	}
 	var userModel = &model.User{
-		ID:          strconv.Itoa(rand.Int()),
+		ID:          strconv.Itoa(int(user.ID)),
 		FirstName:   user.FirstName,
 		LastName:    user.LastName,
 		Email:       user.Email,
@@ -79,6 +89,9 @@ func (r *mutationResolver) LoginUser(ctx context.Context, input *model.LoginInpu
 		Role:        user.Role,
 		Cv:          &user.CV,
 		IsActive:    true,
+		IsVerified:  user.IsVerified,
+		TwoFactorEnabled: user.TwoFactorEnabled,
+		ThemePreference: &user.ThemePreference,
 	}
 
 	return &model.AuthPayload{Token: token, User: userModel}, nil
@@ -129,6 +142,9 @@ func (r *mutationResolver) Register(ctx context.Context, input model.NewUser) (*
 		Role:        userModel.Role,
 		Cv:          &userModel.CV,
 		IsActive:    userModel.IsActive,
+		IsVerified:  userModel.IsVerified,
+		TwoFactorEnabled: userModel.TwoFactorEnabled,
+		ThemePreference: &userModel.ThemePreference,
 	}
 
 	return graphqlUser, nil
@@ -164,7 +180,7 @@ func (r *mutationResolver) Enable2fa(ctx context.Context) (string, error) {
 	}
 
 	// Generate encrypted TOTP secret
-	key, err := totp.Generate(totp.GenerateOptions{
+	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "Balej",
 		AccountName: user.Email,
 	})
@@ -216,12 +232,89 @@ func (r *mutationResolver) UpdateNeuralSettings(ctx context.Context, input model
 	}, nil
 }
 
+// UpdateProfile is the resolver for the UpdateProfile field.
+func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.UpdateProfileInput) (*model.User, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := r.UserService.FindByID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	if input.FirstName != nil {
+		user.FirstName = *input.FirstName
+	}
+	if input.LastName != nil {
+		user.LastName = *input.LastName
+	}
+	if input.PhoneNumber != nil {
+		user.PhoneNumber = *input.PhoneNumber
+	}
+	if input.Address != nil {
+		user.Address = *input.Address
+	}
+	if input.Cv != nil {
+		user.CV = *input.Cv
+	}
+
+	if err := r.UserService.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to update profile: %v", err)
+	}
+
+	return &model.User{
+		ID:               fmt.Sprintf("%d", user.ID),
+		FirstName:        user.FirstName,
+		LastName:         user.LastName,
+		Email:            user.Email,
+		PhoneNumber:      user.PhoneNumber,
+		Address:          user.Address,
+		Role:             user.Role,
+		Cv:               &user.CV,
+		IsActive:         user.IsActive,
+		IsVerified:       user.IsVerified,
+		TwoFactorEnabled: user.TwoFactorEnabled,
+		ThemePreference:  &user.ThemePreference,
+	}, nil
+}
+
+// ChangePassword is the resolver for the ChangePassword field.
+func (r *mutationResolver) ChangePassword(ctx context.Context, currentPassword string, newPassword string) (bool, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	user, err := r.UserService.FindByID(userID)
+	if err != nil {
+		return false, fmt.Errorf("user not found")
+	}
+
+	if !helpers.ComparePassword(user.Password, []byte(currentPassword)) {
+		return false, fmt.Errorf("current password is incorrect")
+	}
+
+	hashed, err := helpers.HashPassword(newPassword)
+	if err != nil {
+		return false, fmt.Errorf("failed to hash password: %v", err)
+	}
+
+	user.Password = hashed
+	if err := r.UserService.Update(user); err != nil {
+		return false, fmt.Errorf("failed to update password: %v", err)
+	}
+
+	return true, nil
+}
+
 // LoginUser is the resolver for the LoginUser field.
-func (r *mutationResolver) AddJobOffer(ctx context.Context, input model.NewJobOffer) (*model.JobOffer, error) {
+func (r *mutationResolver) AddJobOffer(ctx context.Context, input model.NewJobOffer) (res *model.JobOffer, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Panic in AddJobOffer: %v\nStack trace: %s", r, debug.Stack())
-			panic(r) // Re-panic for now; replace with error return if needed
+		if rec := recover(); rec != nil {
+			log.Printf("Panic in AddJobOffer: %v\nStack trace: %s", rec, debug.Stack())
+			err = fmt.Errorf("internal error")
 		}
 	}()
 	if !utils.IsValidJobType(input.JobType) {
@@ -245,6 +338,10 @@ func (r *mutationResolver) AddJobOffer(ctx context.Context, input model.NewJobOf
 	if err != nil {
 		return nil, fmt.Errorf("user with ID %d not found: %v", input.OfferedByuser, err)
 	}
+	// Client plan check: require plan for client job posting
+	if user.Role == "client" && user.Plan == "" {
+		return nil, fmt.Errorf("upgrade required: client plan not set")
+	}
 
 	if err := r.JobService.Create(jobOffer); err != nil {
 		return nil, fmt.Errorf("failed to create job application: %v", err)
@@ -266,6 +363,9 @@ func (r *mutationResolver) AddJobOffer(ctx context.Context, input model.NewJobOf
 			Role:        user.Role,
 			Cv:          &user.CV,
 			IsActive:    user.IsActive,
+			IsVerified:  user.IsVerified,
+			TwoFactorEnabled: user.TwoFactorEnabled,
+			ThemePreference: &user.ThemePreference,
 		},
 		Category:         jobOffer.Category,
 		ApplicationCount: int32(jobOffer.ApplicationCount),
@@ -274,22 +374,98 @@ func (r *mutationResolver) AddJobOffer(ctx context.Context, input model.NewJobOf
 	return response, nil
 }
 
+// UpdateJobDetails is the resolver for the UpdateJobDetails field.
+func (r *mutationResolver) UpdateJobDetails(ctx context.Context, jobID string, input model.JobUpdateInput) (*model.JobOffer, error) {
+	parsedID, err := parseUintID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	jobOffer, err := r.JobService.FindByID(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("job offer not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && jobOffer.OfferedBy != userID {
+		return nil, fmt.Errorf("unauthorized: job update denied")
+	}
+	if input.JobType != nil {
+		jobOffer.Type = *input.JobType
+	}
+	if input.Title != nil {
+		jobOffer.Title = *input.Title
+	}
+	if input.Description != nil {
+		jobOffer.Description = *input.Description
+	}
+	if input.Location != nil {
+		jobOffer.Location = *input.Location
+	}
+	if input.Category != nil {
+		jobOffer.Category = *input.Category
+	}
+	if input.SalaryRange != nil {
+		jobOffer.SalaryRange = *input.SalaryRange
+	}
+	if input.ExperienceLevel != nil {
+		jobOffer.ExperienceLevel = *input.ExperienceLevel
+	}
+	if input.Status != nil {
+		jobOffer.Status = *input.Status
+	}
+	if err := r.JobService.Update(jobOffer); err != nil {
+		return nil, fmt.Errorf("failed to update job: %v", err)
+	}
+	user, _ := r.UserService.FindByID(jobOffer.OfferedBy)
+	return &model.JobOffer{
+		JobID:       strconv.Itoa(int(jobOffer.ID)),
+		JobType:     jobOffer.Type,
+		Title:       jobOffer.Title,
+		Description: jobOffer.Description,
+		Location:    jobOffer.Location,
+		OfferedByuser: mapUserFromModel(user),
+		Category:    jobOffer.Category,
+		ApplicationCount: int32(jobOffer.ApplicationCount),
+		SalaryRange: stringPtr(jobOffer.SalaryRange),
+	}, nil
+}
+
 // UpdateJobStatus is the resolver for the UpdateJobStatus field.
 func (r *mutationResolver) UpdateJobStatus(ctx context.Context, jobID string, status string) (*model.JobOffer, error) {
-	panic(fmt.Errorf("not implemented: UpdateJobStatus - UpdateJobStatus"))
+	return nil, fmt.Errorf("not implemented: UpdateJobStatus")
 }
 
 // DeleteJob is the resolver for the DeleteJob field.
 func (r *mutationResolver) DeleteJob(ctx context.Context, jobID string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteJob - DeleteJob"))
+	parsedID, err := parseUintID(jobID)
+	if err != nil {
+		return false, err
+	}
+	jobOffer, err := r.JobService.FindByID(parsedID)
+	if err != nil {
+		return false, fmt.Errorf("job not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !isAdmin(ctx) && jobOffer.OfferedBy != userID {
+		return false, fmt.Errorf("unauthorized: job delete denied")
+	}
+	if err := r.JobService.Delete(parsedID); err != nil {
+		return false, fmt.Errorf("failed to delete job: %v", err)
+	}
+	return true, nil
 }
 
 // ApplyToJob is the resolver for the ApplyToJob field.
-func (r *mutationResolver) ApplyToJob(ctx context.Context, input model.JobApplication) (*model.ApplicationResponse, error) {
+func (r *mutationResolver) ApplyToJob(ctx context.Context, input model.JobApplication) (res *model.ApplicationResponse, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Panic in ApplyToJob: %v\nStack trace: %s", r, debug.Stack())
-			panic(r)
+		if rec := recover(); rec != nil {
+			log.Printf("Panic in ApplyToJob: %v\nStack trace: %s", rec, debug.Stack())
+			err = fmt.Errorf("internal error")
 		}
 	}()
 
@@ -305,10 +481,17 @@ func (r *mutationResolver) ApplyToJob(ctx context.Context, input model.JobApplic
 		return nil, fmt.Errorf("job offer with ID %d not found: %v", input.JobID, err)
 	}
 
-	// Verify user
-	user, err := r.UserService.FindByID(uint(input.UserID))
+	// Verify user from context
+	userID, err := utils.GetUserIDFromContext(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("user with ID %d not found: %v", input.UserID, err)
+		return nil, err
+	}
+	if input.UserID != int32(userID) && input.UserID != 0 {
+		return nil, fmt.Errorf("user mismatch")
+	}
+	user, err := r.UserService.FindByID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("user with ID %d not found: %v", userID, err)
 	}
 
 	// Check if user is applying to their own job
@@ -317,7 +500,7 @@ func (r *mutationResolver) ApplyToJob(ctx context.Context, input model.JobApplic
 	}
 
 	// Update application count (without modifying Applicants)
-	jobOffer.ApplicationCount--
+	jobOffer.ApplicationCount++
 	if err := r.JobService.Update(jobOffer); err != nil {
 		return nil, fmt.Errorf("failed to update job offer: %v", err)
 	}
@@ -331,10 +514,11 @@ func (r *mutationResolver) ApplyToJob(ctx context.Context, input model.JobApplic
 	// Create job application
 	jobApplication := &models.JobApplicant{
 		JobOfferID: uint(input.JobID),
-		UserID:     uint(input.UserID),
+		UserID:     userID,
 		AppliedAt:  time.Now(),
 		Status:     "pending",
 		Resume:     cvURL,
+		Proposal:   input.Proposal,
 	}
 	log.Printf("Creating job application: %+v", jobApplication)
 	createdApplication, err := r.JobService.CreateApplication(jobApplication)
@@ -346,31 +530,166 @@ func (r *mutationResolver) ApplyToJob(ctx context.Context, input model.JobApplic
 
 	response := &model.ApplicationResponse{
 		Response: "Application successful",
-		User: &model.User{
-			ID:          strconv.Itoa(int(user.ID)),
-			FirstName:   user.FirstName,
-			LastName:    user.LastName,
-			Email:       user.Email,
-			PhoneNumber: user.PhoneNumber,
-			Address:     user.Address,
-			Role:        user.Role,
-			Cv:          &user.CV,
-			IsActive:    user.IsActive,
-		},
+		User: mapUserFromModel(user),
 	}
+
+	_, _ = r.JobService.CreateApplicationEvent(&models.JobApplicationEvent{
+		JobOfferID: uint(input.JobID),
+		UserID:     userID,
+		ActorID:    &userID,
+		Action:     "APPLIED",
+		Details:    "Application submitted",
+	})
 
 	return response, nil
 }
 
+// UpdateApplicationStatus is the resolver for the UpdateApplicationStatus field.
+func (r *mutationResolver) UpdateApplicationStatus(ctx context.Context, jobID string, userID string, status string) (*model.Applicants, error) {
+	jobOfferID, err := parseUintID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	applicantID, err := parseUintID(userID)
+	if err != nil {
+		return nil, err
+	}
+	jobOffer, err := r.JobService.FindByID(jobOfferID)
+	if err != nil {
+		return nil, fmt.Errorf("job offer not found")
+	}
+	requesterID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && jobOffer.OfferedBy != requesterID {
+		return nil, fmt.Errorf("unauthorized: status update denied")
+	}
+	if err := r.JobService.UpdateApplicationStatus(jobOfferID, applicantID, status); err != nil {
+		return nil, fmt.Errorf("failed to update application status: %v", err)
+	}
+	_, _ = r.JobService.CreateApplicationEvent(&models.JobApplicationEvent{
+		JobOfferID: jobOfferID,
+		UserID:     applicantID,
+		ActorID:    &requesterID,
+		Action:     "STATUS_UPDATED",
+		Details:    status,
+	})
+	applicant, err := r.JobService.FindApplicant(jobOfferID, applicantID)
+	if err != nil {
+		return nil, fmt.Errorf("application not found")
+	}
+	return mapApplicant(applicant), nil
+}
+
+// WithdrawApplication is the resolver for the WithdrawApplication field.
+func (r *mutationResolver) WithdrawApplication(ctx context.Context, jobID string) (*model.Applicants, error) {
+	jobOfferID, err := parseUintID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.JobService.UpdateApplicationStatus(jobOfferID, userID, "withdrawn"); err != nil {
+		return nil, fmt.Errorf("failed to withdraw: %v", err)
+	}
+	_, _ = r.JobService.CreateApplicationEvent(&models.JobApplicationEvent{
+		JobOfferID: jobOfferID,
+		UserID:     userID,
+		ActorID:    &userID,
+		Action:     "WITHDRAWN",
+		Details:    "Applicant withdrew",
+	})
+	applicant, err := r.JobService.FindApplicant(jobOfferID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("application not found")
+	}
+	return mapApplicant(applicant), nil
+}
+
+// AddApplicationNote is the resolver for the AddApplicationNote field.
+func (r *mutationResolver) AddApplicationNote(ctx context.Context, jobID string, userID string, note string) (*model.ApplicationNote, error) {
+	jobOfferID, err := parseUintID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	applicantID, err := parseUintID(userID)
+	if err != nil {
+		return nil, err
+	}
+	jobOffer, err := r.JobService.FindByID(jobOfferID)
+	if err != nil {
+		return nil, fmt.Errorf("job offer not found")
+	}
+	requesterID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && jobOffer.OfferedBy != requesterID {
+		return nil, fmt.Errorf("unauthorized: note creation denied")
+	}
+	created, err := r.JobService.CreateApplicationNote(&models.JobApplicationNote{
+		JobOfferID: jobOfferID,
+		UserID:     applicantID,
+		AuthorID:   requesterID,
+		Note:       note,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create note: %v", err)
+	}
+	_, _ = r.JobService.CreateApplicationEvent(&models.JobApplicationEvent{
+		JobOfferID: jobOfferID,
+		UserID:     applicantID,
+		ActorID:    &requesterID,
+		Action:     "NOTE_ADDED",
+		Details:    "Application note added",
+	})
+	return mapApplicationNote(created), nil
+}
+
+// AddTalentApplicationNote is the resolver for the AddTalentApplicationNote field.
+func (r *mutationResolver) AddTalentApplicationNote(ctx context.Context, jobID string, note string) (*model.ApplicationNote, error) {
+	jobOfferID, err := parseUintID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := r.JobService.FindApplicant(jobOfferID, userID); err != nil {
+		return nil, fmt.Errorf("application not found")
+	}
+	created, err := r.JobService.CreateApplicationNote(&models.JobApplicationNote{
+		JobOfferID: jobOfferID,
+		UserID:     userID,
+		AuthorID:   userID,
+		Note:       note,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create note: %v", err)
+	}
+	_, _ = r.JobService.CreateApplicationEvent(&models.JobApplicationEvent{
+		JobOfferID: jobOfferID,
+		UserID:     userID,
+		ActorID:    &userID,
+		Action:     "TALENT_NOTE_ADDED",
+		Details:    "Talent note added",
+	})
+	return mapApplicationNote(created), nil
+}
+
 // ApproveApplication is the resolver for the ApproveApplication field.
-func (r *mutationResolver) ApproveApplication(ctx context.Context, jobID int32, userID int32) (*model.ApprovalResponse, error) {
+func (r *mutationResolver) ApproveApplication(ctx context.Context, input model.Approval) (res *model.ApprovalResponse, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Panic in ApproveApplication: %v\nStack trace: %s", r, debug.Stack())
-			panic(r) // Re-panic for now; replace with error return if needed
+		if rec := recover(); rec != nil {
+			log.Printf("Panic in ApproveApplication: %v\nStack trace: %s", rec, debug.Stack())
+			err = fmt.Errorf("internal error")
 		}
 	}()
-	jobApplicant, err := r.JobService.FindApplicantByID(uint(userID))
+	jobApplicant, err := r.JobService.FindApplicantByID(uint(input.UserID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to find applicant: %v", err)
 	}
@@ -381,14 +700,14 @@ func (r *mutationResolver) ApproveApplication(ctx context.Context, jobID int32, 
 }
 
 // RejectApplication is the resolver for the RejectApplication field.
-func (r *mutationResolver) RejectApplication(ctx context.Context, jobID int32, userID int32) (*model.RejectionResponse, error) {
+func (r *mutationResolver) RejectApplication(ctx context.Context, input model.Approval) (res *model.RejectionResponse, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Panic in RejectApplication: %v\nStack trace: %s", r, debug.Stack())
-			panic(r) // Re-panic for now; replace with error return if needed
+		if rec := recover(); rec != nil {
+			log.Printf("Panic in RejectApplication: %v\nStack trace: %s", rec, debug.Stack())
+			err = fmt.Errorf("internal error")
 		}
 	}()
-	jobApplicant, err := r.JobService.FindApplicantByID(uint(userID))
+	jobApplicant, err := r.JobService.FindApplicantByID(uint(input.UserID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to find applicant: %v", err)
 	}
@@ -399,19 +718,10 @@ func (r *mutationResolver) RejectApplication(ctx context.Context, jobID int32, u
 }
 
 // SendMessage is the resolver for the SendMessage field.
-func (r *mutationResolver) SendMessage(ctx context.Context, chatID string, content string, senderID int32, recieverID int32, isFile *bool, fileURL *string, fileName *string) (*model.Message, error) {
+func (r *mutationResolver) SendMessage(ctx context.Context, chatID string, content string, senderID int32, recieverID int32) (*model.Message, error) {
 	isF := false
-	if isFile != nil {
-		isF = *isFile
-	}
 	fUrl := ""
-	if fileURL != nil {
-		fUrl = *fileURL
-	}
 	fName := ""
-	if fileName != nil {
-		fName = *fileName
-	}
 
 	msg := &models.Message{
 		ID:       uuid.New().String(),
@@ -484,7 +794,7 @@ func (r *mutationResolver) FlagTarget(ctx context.Context, targetType string, ta
 }
 
 // ResolveFlag is the resolver for the ResolveFlag field.
-func (r *mutationResolver) ResolveFlag(ctx context.Context, flagID string, action string) (bool, error) {
+func (r *mutationResolver) ResolveFlag(ctx context.Context, flagID string, action string, notes *string) (bool, error) {
 	adminID, err := utils.GetUserIDFromContext(ctx)
 	if err != nil {
 		return false, err
@@ -496,8 +806,13 @@ func (r *mutationResolver) ResolveFlag(ctx context.Context, flagID string, actio
 	}
 
 	id, _ := strconv.ParseUint(flagID, 10, 32)
-	if err := r.ModerationService.ResolveFlag(uint(id), action, adminID); err != nil {
+	if err := r.ModerationService.ResolveFlag(uint(id), action, derefString(notes), adminID); err != nil {
 		return false, fmt.Errorf("failed to finalize resolution: %v", err)
+	}
+
+	// Log and publish audit event
+	if logItem, err := r.ModerationService.LogActionWithResult("FLAG_RESOLVED", adminID, flagID, action); err == nil {
+		r.PubSub.Publish("audit:log", logItem)
 	}
 
 	return true, nil
@@ -521,6 +836,10 @@ func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
 			Email:       u.Email,
 			Role:        u.Role,
 			Cv:          &u.CV,
+			IsActive:    u.IsActive,
+			IsVerified:  u.IsVerified,
+			TwoFactorEnabled: u.TwoFactorEnabled,
+			ThemePreference: &u.ThemePreference,
 		})
 	}
 	return result, nil
@@ -545,20 +864,23 @@ func (r *queryResolver) User(ctx context.Context, id string) (*model.User, error
 		Email:       user.Email,
 		Role:        user.Role,
 		IsActive:    user.IsActive,
+		IsVerified:  user.IsVerified,
+		TwoFactorEnabled: user.TwoFactorEnabled,
+		ThemePreference: &user.ThemePreference,
 	}, nil
 }
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
-	panic(fmt.Errorf("not implemented: Me - me"))
+	return nil, fmt.Errorf("not implemented: Me")
 }
 
 // Jobs is the resolver for the jobs field.
-func (r *queryResolver) Jobs(ctx context.Context) ([]*model.JobOffer, error) {
+func (r *queryResolver) Jobs(ctx context.Context) (res []*model.JobOffer, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Panic in ApplyToJob: %v\nStack trace: %s", r, debug.Stack())
-			panic(r) // Re-panic for now; replace with error return if needed
+		if rec := recover(); rec != nil {
+			log.Printf("Panic in Jobs: %v\nStack trace: %s", rec, debug.Stack())
+			err = fmt.Errorf("internal error")
 		}
 	}()
 	jobs, err := r.JobService.GetAll()
@@ -573,7 +895,20 @@ func (r *queryResolver) Jobs(ctx context.Context) ([]*model.JobOffer, error) {
 			Title:            job.Title,
 			Description:      job.Description,
 			Location:         job.Location,
-			OfferedByuser:    &model.User{ID: strconv.Itoa(int(job.OfferedBy)), FirstName: job.OfferedByUser.FirstName, LastName: job.OfferedByUser.LastName},
+			OfferedByuser:    &model.User{
+				ID:          strconv.Itoa(int(job.OfferedBy)),
+				FirstName:   job.OfferedByUser.FirstName,
+				LastName:    job.OfferedByUser.LastName,
+				Email:       job.OfferedByUser.Email,
+				PhoneNumber: job.OfferedByUser.PhoneNumber,
+				Address:     job.OfferedByUser.Address,
+				Role:        job.OfferedByUser.Role,
+				Cv:          &job.OfferedByUser.CV,
+				IsActive:    job.OfferedByUser.IsActive,
+				IsVerified:  job.OfferedByUser.IsVerified,
+				TwoFactorEnabled: job.OfferedByUser.TwoFactorEnabled,
+				ThemePreference: &job.OfferedByUser.ThemePreference,
+			},
 			Category:         job.Category,
 			ApplicationCount: int32(job.ApplicationCount),
 		})
@@ -581,12 +916,36 @@ func (r *queryResolver) Jobs(ctx context.Context) ([]*model.JobOffer, error) {
 	return result, nil
 }
 
+// Job is the resolver for the job field.
+func (r *queryResolver) Job(ctx context.Context, id string) (*model.JobOffer, error) {
+	jobID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	job, err := r.JobService.FindByID(jobID)
+	if err != nil {
+		return nil, fmt.Errorf("job not found")
+	}
+	user, _ := r.UserService.FindByID(job.OfferedBy)
+	return &model.JobOffer{
+		JobID:       strconv.Itoa(int(job.ID)),
+		JobType:     job.Type,
+		Title:       job.Title,
+		Description: job.Description,
+		Location:    job.Location,
+		OfferedByuser: mapUserFromModel(user),
+		Category:    job.Category,
+		ApplicationCount: int32(job.ApplicationCount),
+		SalaryRange: stringPtr(job.SalaryRange),
+	}, nil
+}
+
 // JobsWithFilter is the resolver for the jobsWithFilter field.
-func (r *queryResolver) JobsWithFilter(ctx context.Context, filter *model.JobFilter) ([]*model.JobOffer, error) {
+func (r *queryResolver) JobsWithFilter(ctx context.Context, filter *model.JobFilter) (res []*model.JobOffer, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Panic in JobsWithFilter: %v\nStack trace: %s", r, debug.Stack())
-			panic(r) // Re-panic for now; replace with error return if needed
+		if rec := recover(); rec != nil {
+			log.Printf("Panic in JobsWithFilter: %v\nStack trace: %s", rec, debug.Stack())
+			err = fmt.Errorf("internal error")
 		}
 	}()
 
@@ -621,7 +980,20 @@ func (r *queryResolver) JobsWithFilter(ctx context.Context, filter *model.JobFil
 			Title:            job.Title,
 			Description:      job.Description,
 			Location:         job.Location,
-			OfferedByuser:    &model.User{ID: strconv.Itoa(int(job.OfferedBy)), FirstName: job.OfferedByUser.FirstName, LastName: job.OfferedByUser.LastName},
+			OfferedByuser:    &model.User{
+				ID:          strconv.Itoa(int(job.OfferedBy)),
+				FirstName:   job.OfferedByUser.FirstName,
+				LastName:    job.OfferedByUser.LastName,
+				Email:       job.OfferedByUser.Email,
+				PhoneNumber: job.OfferedByUser.PhoneNumber,
+				Address:     job.OfferedByUser.Address,
+				Role:        job.OfferedByUser.Role,
+				Cv:          &job.OfferedByUser.CV,
+				IsActive:    job.OfferedByUser.IsActive,
+				IsVerified:  job.OfferedByUser.IsVerified,
+				TwoFactorEnabled: job.OfferedByUser.TwoFactorEnabled,
+				ThemePreference: &job.OfferedByUser.ThemePreference,
+			},
 			Category:         job.Category,
 			ApplicationCount: int32(job.ApplicationCount),
 		})
@@ -630,11 +1002,11 @@ func (r *queryResolver) JobsWithFilter(ctx context.Context, filter *model.JobFil
 }
 
 // Applicants is the resolver for the applicants field.
-func (r *queryResolver) Applicants(ctx context.Context) ([]*model.Applicants, error) {
+func (r *queryResolver) Applicants(ctx context.Context) (res []*model.Applicants, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Panic in Applicants: %v\nStack trace: %s", r, debug.Stack())
-			panic(r) // Re-panic for now; replace with error return if needed
+		if rec := recover(); rec != nil {
+			log.Printf("Panic in Applicants: %v\nStack trace: %s", rec, debug.Stack())
+			err = fmt.Errorf("internal error")
 		}
 	}()
 
@@ -645,23 +1017,17 @@ func (r *queryResolver) Applicants(ctx context.Context) ([]*model.Applicants, er
 
 	var result []*model.Applicants
 	for _, applicant := range applicants {
-		result = append(result, &model.Applicants{
-			UserID:    strconv.Itoa(int(applicant.UserID)),
-			JobID:     int32(applicant.JobOfferID),
-			AppliedAt: applicant.AppliedAt.Format(time.RFC3339),
-			Status:    applicant.Status,
-			Resume:    applicant.Resume,
-		})
+		result = append(result, mapApplicant(applicant))
 	}
 	return result, nil
 }
 
 // ApplicantsWithfilter is the resolver for the applicantsWithfilter field.
-func (r *queryResolver) ApplicantsWithfilter(ctx context.Context, filter *model.JobApplicantFilter) ([]*model.Applicants, error) {
+func (r *queryResolver) ApplicantsWithfilter(ctx context.Context, filter *model.JobApplicantFilter) (res []*model.Applicants, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Panic in ApplicantsWithfilter: %v\nStack trace: %s", r, debug.Stack())
-			panic(r) // Re-panic for now; replace with error return if needed
+		if rec := recover(); rec != nil {
+			log.Printf("Panic in ApplicantsWithfilter: %v\nStack trace: %s", rec, debug.Stack())
+			err = fmt.Errorf("internal error")
 		}
 	}()
 
@@ -690,13 +1056,104 @@ func (r *queryResolver) ApplicantsWithfilter(ctx context.Context, filter *model.
 
 	var result []*model.Applicants
 	for _, applicant := range applicants {
-		result = append(result, &model.Applicants{
-			UserID:    strconv.Itoa(int(applicant.UserID)),
-			JobID:     int32(applicant.JobOfferID),
-			AppliedAt: applicant.AppliedAt.Format(time.RFC3339),
-			Status:    applicant.Status,
-			Resume:    applicant.Resume,
-		})
+		result = append(result, mapApplicant(applicant))
+	}
+	return result, nil
+}
+
+// Application is the resolver for the application field.
+func (r *queryResolver) Application(ctx context.Context, jobID string, userID string) (*model.Applicants, error) {
+	jobOfferID, err := parseUintID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	applicantID, err := parseUintID(userID)
+	if err != nil {
+		return nil, err
+	}
+	job, err := r.JobService.FindByID(jobOfferID)
+	if err != nil {
+		return nil, fmt.Errorf("job not found")
+	}
+	requesterID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && job.OfferedBy != requesterID && applicantID != requesterID {
+		return nil, fmt.Errorf("unauthorized: application access denied")
+	}
+	applicant, err := r.JobService.FindApplicant(jobOfferID, applicantID)
+	if err != nil {
+		return nil, fmt.Errorf("application not found")
+	}
+	return mapApplicant(applicant), nil
+}
+
+// ApplicationNotes is the resolver for the applicationNotes field.
+func (r *queryResolver) ApplicationNotes(ctx context.Context, jobID string, userID string) ([]*model.ApplicationNote, error) {
+	jobOfferID, err := parseUintID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	applicantID, err := parseUintID(userID)
+	if err != nil {
+		return nil, err
+	}
+	job, err := r.JobService.FindByID(jobOfferID)
+	if err != nil {
+		return nil, fmt.Errorf("job not found")
+	}
+	requesterID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && job.OfferedBy != requesterID && applicantID != requesterID {
+		return nil, fmt.Errorf("unauthorized: notes access denied")
+	}
+	notes, err := r.JobService.ListApplicationNotes(jobOfferID, applicantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load notes: %v", err)
+	}
+	var result []*model.ApplicationNote
+	for _, note := range notes {
+		result = append(result, mapApplicationNote(note))
+	}
+	return result, nil
+}
+
+// ApplicationTimeline is the resolver for the applicationTimeline field.
+func (r *queryResolver) ApplicationTimeline(ctx context.Context, jobID string, userID string, filter *model.ApplicationTimelineFilter) ([]*model.ApplicationEvent, error) {
+	jobOfferID, err := parseUintID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	applicantID, err := parseUintID(userID)
+	if err != nil {
+		return nil, err
+	}
+	job, err := r.JobService.FindByID(jobOfferID)
+	if err != nil {
+		return nil, fmt.Errorf("job not found")
+	}
+	requesterID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && job.OfferedBy != requesterID && applicantID != requesterID {
+		return nil, fmt.Errorf("unauthorized: timeline access denied")
+	}
+	events, err := r.JobService.ListApplicationEvents(jobOfferID, applicantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load timeline: %v", err)
+	}
+	var result []*model.ApplicationEvent
+	for _, event := range events {
+		if filter != nil && filter.Action != nil && *filter.Action != "" {
+			if event.Action != *filter.Action {
+				continue
+			}
+		}
+		result = append(result, mapApplicationEvent(event))
 	}
 	return result, nil
 }
@@ -744,6 +1201,9 @@ func (r *queryResolver) ChatHistory(ctx context.Context, chatID string) ([]*mode
 
 // ModerationQueue is the resolver for the moderationQueue field.
 func (r *queryResolver) ModerationQueue(ctx context.Context) ([]*model.Flag, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
 	flags, err := r.ModerationService.GetModerationQueue()
 	if err != nil {
 		return nil, err
@@ -764,6 +1224,9 @@ func (r *queryResolver) ModerationQueue(ctx context.Context) ([]*model.Flag, err
 
 // AuditTrail is the resolver for the auditTrail field.
 func (r *queryResolver) AuditTrail(ctx context.Context) ([]*model.AuditLog, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
 	logs, err := r.ModerationService.GetAuditTrail()
 	if err != nil {
 		return nil, err
@@ -775,11 +1238,1655 @@ func (r *queryResolver) AuditTrail(ctx context.Context) ([]*model.AuditLog, erro
 			ID:        fmt.Sprintf("%d", l.ID),
 			Action:    l.Action,
 			TargetID:  &l.TargetID,
-			Timestamp: l.Timestamp,
+			Timestamp: l.Timestamp.Format(time.RFC3339),
 			Metadata:  &l.Metadata,
 		})
 	}
 	return result, nil
+}
+
+// Notifications is the resolver for the notifications field.
+func (r *queryResolver) Notifications(ctx context.Context) ([]*model.Notification, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	notifications, err := r.NotificationService.GetUserNotifications(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch notifications: %v", err)
+	}
+
+	var result []*model.Notification
+	for _, n := range notifications {
+		var expiresAt *string
+		if n.ExpiresAt != nil {
+			formatted := n.ExpiresAt.Format(time.RFC3339)
+			expiresAt = &formatted
+		}
+		result = append(result, &model.Notification{
+			ID:        fmt.Sprintf("%d", n.ID),
+			Title:     n.Title,
+			Content:   n.Content,
+			Type:      model.NotificationType(n.Type),
+			Priority:  model.NotificationPriority(n.Priority),
+			IsRead:    n.IsRead,
+			ActionURL: &n.ActionURL,
+			CreatedAt: n.CreatedAt.Format(time.RFC3339),
+			ExpiresAt: expiresAt,
+		})
+	}
+	return result, nil
+}
+
+// EmailSenderProfiles is the resolver for the emailSenderProfiles field.
+func (r *queryResolver) EmailSenderProfiles(ctx context.Context) ([]*model.EmailSenderProfile, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	profiles, err := r.NotificationService.ListSenderProfiles()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch sender profiles: %v", err)
+	}
+	var result []*model.EmailSenderProfile
+	for _, p := range profiles {
+		result = append(result, &model.EmailSenderProfile{
+			ID:        fmt.Sprintf("%d", p.ID),
+			Label:     p.Label,
+			Email:     p.Email,
+			Provider:  model.SenderProvider(p.Provider),
+			IsActive:  p.IsActive,
+			CreatedAt: p.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return result, nil
+}
+
+// EmailRoutingConfig is the resolver for the emailRoutingConfig field.
+func (r *queryResolver) EmailRoutingConfig(ctx context.Context) (*model.EmailRoutingConfig, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	cfg, err := r.NotificationService.GetRoutingConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch routing config: %v", err)
+	}
+	var notifID *string
+	var annID *string
+	var newsID *string
+	if cfg.NotificationsSenderID != nil {
+		val := fmt.Sprintf("%d", *cfg.NotificationsSenderID)
+		notifID = &val
+	}
+	if cfg.AnnouncementsSenderID != nil {
+		val := fmt.Sprintf("%d", *cfg.AnnouncementsSenderID)
+		annID = &val
+	}
+	if cfg.NewslettersSenderID != nil {
+		val := fmt.Sprintf("%d", *cfg.NewslettersSenderID)
+		newsID = &val
+	}
+	return &model.EmailRoutingConfig{
+		ID:                    fmt.Sprintf("%d", cfg.ID),
+		NotificationsSenderID: notifID,
+		AnnouncementsSenderID: annID,
+		NewslettersSenderID:   newsID,
+	}, nil
+}
+
+// EmailTemplates is the resolver for the emailTemplates field.
+func (r *queryResolver) EmailTemplates(ctx context.Context) ([]*model.EmailTemplate, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	templates, err := r.NotificationService.ListEmailTemplates()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch templates: %v", err)
+	}
+	var result []*model.EmailTemplate
+	for _, t := range templates {
+		result = append(result, &model.EmailTemplate{
+			ID:      fmt.Sprintf("%d", t.ID),
+			Name:    t.Name,
+			Trigger: t.Trigger,
+			Subject: t.Subject,
+			Body:    t.Body,
+			Channel: t.Channel,
+			Status:  t.Status,
+		})
+	}
+	return result, nil
+}
+
+// Announcements is the resolver for the announcements field.
+func (r *queryResolver) Announcements(ctx context.Context) ([]*model.Announcement, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	list, err := r.NotificationService.ListAnnouncements()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch announcements: %v", err)
+	}
+	var result []*model.Announcement
+	for _, a := range list {
+		result = append(result, &model.Announcement{
+			ID:        fmt.Sprintf("%d", a.ID),
+			Title:     a.Title,
+			Content:   a.Content,
+			Category:  a.Category,
+			Priority:  a.Priority,
+			Author:    a.Author,
+			CreatedAt: a.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return result, nil
+}
+
+// Newsletters is the resolver for the newsletters field.
+func (r *queryResolver) Newsletters(ctx context.Context) ([]*model.Newsletter, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	list, err := r.NotificationService.ListNewsletters()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch newsletters: %v", err)
+	}
+	var result []*model.Newsletter
+	for _, n := range list {
+		var scheduledAt *string
+		if n.ScheduledAt != nil {
+			v := n.ScheduledAt.Format(time.RFC3339)
+			scheduledAt = &v
+		}
+		var sentAt *string
+		if n.SentAt != nil {
+			v := n.SentAt.Format(time.RFC3339)
+			sentAt = &v
+		}
+		result = append(result, &model.Newsletter{
+			ID:          fmt.Sprintf("%d", n.ID),
+			Subject:     n.Subject,
+			Preheader:   &n.Preheader,
+			Content:     n.Content,
+			Segment:     n.Segment,
+			Status:      model.NewsletterStatus(n.Status),
+			ScheduledAt: scheduledAt,
+			SentAt:      sentAt,
+			CreatedAt:   n.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return result, nil
+}
+
+// ComplianceRequests is the resolver for the complianceRequests field.
+func (r *queryResolver) ComplianceRequests(ctx context.Context, typeArg *model.ComplianceRequestType) ([]*model.ComplianceRequest, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	var reqType *models.ComplianceRequestType
+	if typeArg != nil {
+		t := models.ComplianceRequestType(*typeArg)
+		reqType = &t
+	}
+	list, err := r.ComplianceService.ListRequests(reqType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch compliance requests: %v", err)
+	}
+	var result []*model.ComplianceRequest
+	for _, r := range list {
+		result = append(result, &model.ComplianceRequest{
+			ID:        fmt.Sprintf("%d", r.ID),
+			UserID:    fmt.Sprintf("%d", r.UserID),
+			Type:      model.ComplianceRequestType(r.Type),
+			Status:    r.Status,
+			Notes:     &r.Notes,
+			CreatedAt: r.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return result, nil
+}
+
+// Roles is the resolver for the roles field.
+func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	roles, err := r.RBACService.ListRoles()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch roles: %v", err)
+	}
+	var result []*model.Role
+	for _, role := range roles {
+		var perms []*model.Permission
+		for _, p := range role.Permissions {
+			perms = append(perms, &model.Permission{
+				ID:          fmt.Sprintf("%d", p.ID),
+				Key:         p.Key,
+				Description: &p.Description,
+			})
+		}
+		result = append(result, &model.Role{
+			ID:          fmt.Sprintf("%d", role.ID),
+			Name:        role.Name,
+			Summary:     &role.Summary,
+			IsSystem:    role.IsSystem,
+			Permissions: perms,
+		})
+	}
+	return result, nil
+}
+
+// Permissions is the resolver for the permissions field.
+func (r *queryResolver) Permissions(ctx context.Context) ([]*model.Permission, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	perms, err := r.RBACService.ListPermissions()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch permissions: %v", err)
+	}
+	var result []*model.Permission
+	for _, p := range perms {
+		result = append(result, &model.Permission{
+			ID:          fmt.Sprintf("%d", p.ID),
+			Key:         p.Key,
+			Description: &p.Description,
+		})
+	}
+	return result, nil
+}
+
+// MyTalentProfile is the resolver for the myTalentProfile field.
+func (r *queryResolver) MyTalentProfile(ctx context.Context) (*model.TalentProfile, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	profile, err := r.ProfileService.GetByUserID(userID)
+	if err != nil {
+		return nil, nil
+	}
+	return mapTalentProfile(profile), nil
+}
+
+// TalentProfile is the resolver for the talentProfile field.
+func (r *queryResolver) TalentProfile(ctx context.Context, userID string) (*model.TalentProfile, error) {
+	currentID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if userID != fmt.Sprintf("%d", currentID) {
+		if err := requireAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+	uid, err := strconv.ParseUint(userID, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user id")
+	}
+	profile, err := r.ProfileService.GetByUserID(uint(uid))
+	if err != nil {
+		return nil, fmt.Errorf("profile not found")
+	}
+	return mapTalentProfile(profile), nil
+}
+
+// Projects is the resolver for the projects field.
+func (r *queryResolver) Projects(ctx context.Context) ([]*model.Project, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	projects, err := r.ProjectService.ListProjectsForUser(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load projects: %v", err)
+	}
+	var result []*model.Project
+	for _, p := range projects {
+		result = append(result, mapProject(p))
+	}
+	return result, nil
+}
+
+// Project is the resolver for the project field.
+func (r *queryResolver) Project(ctx context.Context, id string) (*model.Project, error) {
+	projectID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(projectID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	return mapProject(project), nil
+}
+
+// MyProjectInvitations is the resolver for the myProjectInvitations field.
+func (r *queryResolver) MyProjectInvitations(ctx context.Context) ([]*model.ProjectInvitation, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	invites, err := r.ProjectService.ListInvitationsForUser(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load invitations: %v", err)
+	}
+	var result []*model.ProjectInvitation
+	for _, invite := range invites {
+		result = append(result, mapProjectInvitation(invite))
+	}
+	return result, nil
+}
+
+// ProjectInvitations is the resolver for the projectInvitations field.
+func (r *queryResolver) ProjectInvitations(ctx context.Context, projectID string) ([]*model.ProjectInvitation, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	invites, err := r.ProjectService.ListInvitationsForProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load invitations: %v", err)
+	}
+	var result []*model.ProjectInvitation
+	for _, invite := range invites {
+		result = append(result, mapProjectInvitation(invite))
+	}
+	return result, nil
+}
+
+// ProjectActivity is the resolver for the projectActivity field.
+func (r *queryResolver) ProjectActivity(ctx context.Context, projectID string, limit *int32) ([]*model.ProjectActivity, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	var limitValue int
+	if limit != nil {
+		limitValue = int(*limit)
+	}
+	activities, err := r.ProjectService.ListProjectActivities(parsedID, limitValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load activities: %v", err)
+	}
+	var result []*model.ProjectActivity
+	for _, activity := range activities {
+		result = append(result, mapProjectActivity(activity))
+	}
+	return result, nil
+}
+
+// ProjectTasks is the resolver for the projectTasks field.
+func (r *queryResolver) ProjectTasks(ctx context.Context, projectID string) ([]*model.ProjectTask, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	tasks, err := r.ProjectService.ListTasks(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load tasks: %v", err)
+	}
+	var result []*model.ProjectTask
+	for _, task := range tasks {
+		result = append(result, mapProjectTask(task))
+	}
+	return result, nil
+}
+
+// ProjectDeliverables is the resolver for the projectDeliverables field.
+func (r *queryResolver) ProjectDeliverables(ctx context.Context, projectID string) ([]*model.ProjectDeliverable, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	deliverables, err := r.ProjectService.ListDeliverables(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load deliverables: %v", err)
+	}
+	var result []*model.ProjectDeliverable
+	for _, deliverable := range deliverables {
+		result = append(result, mapProjectDeliverable(deliverable))
+	}
+	return result, nil
+}
+
+// ProjectSubmissions is the resolver for the projectSubmissions field.
+func (r *queryResolver) ProjectSubmissions(ctx context.Context, projectID string, deliverableID *string) ([]*model.ProjectSubmission, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	var deliverableFilter *uint
+	if deliverableID != nil && *deliverableID != "" {
+		parsedDeliverable, err := parseUintID(*deliverableID)
+		if err != nil {
+			return nil, err
+		}
+		deliverableFilter = &parsedDeliverable
+	}
+	submissions, err := r.ProjectService.ListSubmissions(parsedID, deliverableFilter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load submissions: %v", err)
+	}
+	var result []*model.ProjectSubmission
+	for _, submission := range submissions {
+		result = append(result, mapProjectSubmission(submission))
+	}
+	return result, nil
+}
+
+// MyFiles is the resolver for the myFiles field.
+func (r *queryResolver) MyFiles(ctx context.Context) ([]*model.FileAsset, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	files, err := r.CommunicationService.ListFilesByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load files: %v", err)
+	}
+	var result []*model.FileAsset
+	for _, file := range files {
+		result = append(result, mapFileAsset(file))
+	}
+	return result, nil
+}
+
+// ProjectFiles is the resolver for the projectFiles field.
+func (r *queryResolver) ProjectFiles(ctx context.Context, projectID string) ([]*model.FileAsset, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	files, err := r.CommunicationService.ListFilesByProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load files: %v", err)
+	}
+	var result []*model.FileAsset
+	for _, file := range files {
+		result = append(result, mapFileAsset(file))
+	}
+	return result, nil
+}
+
+// ChatFiles is the resolver for the chatFiles field.
+func (r *queryResolver) ChatFiles(ctx context.Context, chatID string) ([]*model.FileAsset, error) {
+	files, err := r.CommunicationService.ListFilesByChat(chatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load files: %v", err)
+	}
+	var result []*model.FileAsset
+	for _, file := range files {
+		result = append(result, mapFileAsset(file))
+	}
+	return result, nil
+}
+
+// MyVideoSessions is the resolver for the myVideoSessions field.
+func (r *queryResolver) MyVideoSessions(ctx context.Context) ([]*model.VideoSession, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := r.CommunicationService.ListVideoSessionsForUser(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %v", err)
+	}
+	var result []*model.VideoSession
+	for _, session := range sessions {
+		result = append(result, mapVideoSession(session))
+	}
+	return result, nil
+}
+
+// ProjectVideoSessions is the resolver for the projectVideoSessions field.
+func (r *queryResolver) ProjectVideoSessions(ctx context.Context, projectID string) ([]*model.VideoSession, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	sessions, err := r.CommunicationService.ListVideoSessionsForProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %v", err)
+	}
+	var result []*model.VideoSession
+	for _, session := range sessions {
+		result = append(result, mapVideoSession(session))
+	}
+	return result, nil
+}
+
+// VideoSessionParticipants is the resolver for the videoSessionParticipants field.
+func (r *queryResolver) VideoSessionParticipants(ctx context.Context, sessionID string) ([]*model.VideoSessionParticipant, error) {
+	parsedID, err := parseUintID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	participants, err := r.CommunicationService.ListParticipants(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load participants: %v", err)
+	}
+	var result []*model.VideoSessionParticipant
+	for _, participant := range participants {
+		result = append(result, mapVideoSessionParticipant(participant))
+	}
+	return result, nil
+}
+
+// VideoSessionInvites is the resolver for the videoSessionInvites field.
+func (r *queryResolver) VideoSessionInvites(ctx context.Context, sessionID string) ([]*model.VideoSessionInvite, error) {
+	parsedID, err := parseUintID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	invites, err := r.CommunicationService.ListVideoInvitesForSession(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load invites: %v", err)
+	}
+	var result []*model.VideoSessionInvite
+	for _, invite := range invites {
+		result = append(result, mapVideoSessionInvite(invite))
+	}
+	return result, nil
+}
+
+// MyVideoInvites is the resolver for the myVideoInvites field.
+func (r *queryResolver) MyVideoInvites(ctx context.Context) ([]*model.VideoSessionInvite, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	invites, err := r.CommunicationService.ListVideoInvitesForUser(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load invites: %v", err)
+	}
+	var result []*model.VideoSessionInvite
+	for _, invite := range invites {
+		result = append(result, mapVideoSessionInvite(invite))
+	}
+	return result, nil
+}
+
+// MyOrganization is the resolver for the myOrganization field.
+func (r *queryResolver) MyOrganization(ctx context.Context) (*model.Organization, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	return mapOrganization(org), nil
+}
+
+// OrganizationMembers is the resolver for the organizationMembers field.
+func (r *queryResolver) OrganizationMembers(ctx context.Context) ([]*model.OrganizationMember, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	members, err := r.OrganizationService.ListMembers(org.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load members: %v", err)
+	}
+	var result []*model.OrganizationMember
+	for _, member := range members {
+		result = append(result, mapOrganizationMember(member))
+	}
+	return result, nil
+}
+
+// OrganizationInvites is the resolver for the organizationInvites field.
+func (r *queryResolver) OrganizationInvites(ctx context.Context) ([]*model.OrganizationInvite, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	invites, err := r.OrganizationService.ListInvites(org.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load invites: %v", err)
+	}
+	var result []*model.OrganizationInvite
+	for _, invite := range invites {
+		result = append(result, mapOrganizationInvite(invite))
+	}
+	return result, nil
+}
+
+// OrganizationActivity is the resolver for the organizationActivity field.
+func (r *queryResolver) OrganizationActivity(ctx context.Context, limit *int32) ([]*model.OrganizationActivity, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	var limitValue int
+	if limit != nil {
+		limitValue = int(*limit)
+	}
+	activities, err := r.OrganizationService.ListActivity(org.ID, limitValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load activity: %v", err)
+	}
+	var result []*model.OrganizationActivity
+	for _, activity := range activities {
+		result = append(result, mapOrganizationActivity(activity))
+	}
+	return result, nil
+}
+
+// BillingSubscription is the resolver for the billingSubscription field.
+func (r *queryResolver) BillingSubscription(ctx context.Context) (*model.BillingSubscription, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	sub, err := r.OrganizationService.GetSubscription(org.ID)
+	if err != nil {
+		return nil, fmt.Errorf("subscription not found")
+	}
+	return mapBillingSubscription(sub), nil
+}
+
+// BillingInvoices is the resolver for the billingInvoices field.
+func (r *queryResolver) BillingInvoices(ctx context.Context) ([]*model.BillingInvoice, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	invoices, err := r.OrganizationService.ListInvoices(org.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load invoices: %v", err)
+	}
+	var result []*model.BillingInvoice
+	for _, invoice := range invoices {
+		result = append(result, mapBillingInvoice(invoice))
+	}
+	return result, nil
+}
+
+// BillingPaymentMethods is the resolver for the billingPaymentMethods field.
+func (r *queryResolver) BillingPaymentMethods(ctx context.Context) ([]*model.BillingPaymentMethod, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	methods, err := r.OrganizationService.ListPaymentMethods(org.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load payment methods: %v", err)
+	}
+	var result []*model.BillingPaymentMethod
+	for _, method := range methods {
+		result = append(result, mapBillingPaymentMethod(method))
+	}
+	return result, nil
+}
+
+// BillingEvents is the resolver for the billingEvents field.
+func (r *queryResolver) BillingEvents(ctx context.Context) ([]*model.BillingEvent, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	events, err := r.OrganizationService.ListBillingEvents(org.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load billing events: %v", err)
+	}
+	var result []*model.BillingEvent
+	for _, event := range events {
+		result = append(result, mapBillingEvent(event))
+	}
+	return result, nil
+}
+
+// ProjectChats is the resolver for the projectChats field.
+func (r *queryResolver) ProjectChats(ctx context.Context, projectID string) ([]*model.ProjectChat, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	chats, err := r.ProjectService.ListProjectChats(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load project chats: %v", err)
+	}
+	var result []*model.ProjectChat
+	for _, chat := range chats {
+		result = append(result, mapProjectChat(chat))
+	}
+	return result, nil
+}
+
+// ProjectChatMessages is the resolver for the projectChatMessages field.
+func (r *queryResolver) ProjectChatMessages(ctx context.Context, projectID string, limit *int32, offset *int32, order *string) ([]*model.Message, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	chats, err := r.ProjectService.ListProjectChats(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load project chats: %v", err)
+	}
+	var result []*model.Message
+	for _, chat := range chats {
+		msgs, err := r.ChatService.GetChatHistory(chat.ChatID)
+		if err != nil {
+			continue
+		}
+		for _, msg := range msgs {
+			fileURL := ""
+			fileName := ""
+			if msg.IsFile {
+				fileURL = msg.FileUrl
+				fileName = msg.FileName
+			}
+			result = append(result, &model.Message{
+				ID:       msg.ID,
+				Message:  msg.Content,
+				SenderID: int32(msg.SenderID),
+				ChatID:   msg.ChatID,
+				SentAt:   msg.SendAt,
+				IsRead:   msg.IsRead,
+				IsFile:   msg.IsFile,
+				FileURL:  &fileURL,
+				FileName: &fileName,
+			})
+		}
+	}
+	orderValue := "DESC"
+	if order != nil && *order != "" {
+		orderValue = *order
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if orderValue == "ASC" {
+			return result[i].SentAt.Before(result[j].SentAt)
+		}
+		return result[i].SentAt.After(result[j].SentAt)
+	})
+	start := 0
+	if offset != nil && *offset > 0 {
+		start = int(*offset)
+	}
+	if start > len(result) {
+		return []*model.Message{}, nil
+	}
+	end := len(result)
+	if limit != nil && *limit > 0 {
+		limitVal := start + int(*limit)
+		if limitVal < end {
+			end = limitVal
+		}
+	}
+	result = result[start:end]
+	return result, nil
+}
+
+// ProjectChatMessagesByChat is the resolver for the projectChatMessagesByChat field.
+func (r *queryResolver) ProjectChatMessagesByChat(ctx context.Context, projectID string, chatID string, limit *int32, offset *int32, order *string) ([]*model.Message, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	// Ensure chat belongs to project
+	chats, err := r.ProjectService.ListProjectChats(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load project chats: %v", err)
+	}
+	isProjectChat := false
+	for _, chat := range chats {
+		if chat.ChatID == chatID {
+			isProjectChat = true
+			break
+		}
+	}
+	if !isProjectChat {
+		return nil, fmt.Errorf("chat not linked to project")
+	}
+	msgs, err := r.ChatService.GetChatHistory(chatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chat history: %v", err)
+	}
+	var result []*model.Message
+	for _, msg := range msgs {
+		fileURL := ""
+		fileName := ""
+		if msg.IsFile {
+			fileURL = msg.FileUrl
+			fileName = msg.FileName
+		}
+		result = append(result, &model.Message{
+			ID:       msg.ID,
+			Message:  msg.Content,
+			SenderID: int32(msg.SenderID),
+			ChatID:   msg.ChatID,
+			SentAt:   msg.SendAt,
+			IsRead:   msg.IsRead,
+			IsFile:   msg.IsFile,
+			FileURL:  &fileURL,
+			FileName: &fileName,
+		})
+	}
+	orderValue := "DESC"
+	if order != nil && *order != "" {
+		orderValue = *order
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if orderValue == "ASC" {
+			return result[i].SentAt.Before(result[j].SentAt)
+		}
+		return result[i].SentAt.After(result[j].SentAt)
+	})
+	start := 0
+	if offset != nil && *offset > 0 {
+		start = int(*offset)
+	}
+	if start > len(result) {
+		return []*model.Message{}, nil
+	}
+	end := len(result)
+	if limit != nil && *limit > 0 {
+		limitVal := start + int(*limit)
+		if limitVal < end {
+			end = limitVal
+		}
+	}
+	return result[start:end], nil
+}
+
+// ProjectChatMessagesPage is the resolver for the projectChatMessagesPage field.
+func (r *queryResolver) ProjectChatMessagesPage(ctx context.Context, projectID string, first *int32, after *string) (*model.ChatPage, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	chats, err := r.ProjectService.ListProjectChats(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load project chats: %v", err)
+	}
+	var messages []*model.Message
+	var cursorTime time.Time
+	var cursorID string
+	if after != nil && *after != "" {
+		decoded, err := base64.StdEncoding.DecodeString(*after)
+		if err == nil {
+			parts := strings.SplitN(string(decoded), "|", 2)
+			if len(parts) == 2 {
+				if ts, err := time.Parse(time.RFC3339Nano, parts[0]); err == nil {
+					cursorTime = ts
+					cursorID = parts[1]
+				}
+			}
+		}
+	}
+	for _, chat := range chats {
+		msgs, err := r.ChatService.GetChatHistory(chat.ChatID)
+		if err != nil {
+			continue
+		}
+		for _, msg := range msgs {
+			if !cursorTime.IsZero() {
+				if msg.SendAt.After(cursorTime) || (msg.SendAt.Equal(cursorTime) && msg.ID >= cursorID) {
+					continue
+				}
+			}
+			fileURL := ""
+			fileName := ""
+			if msg.IsFile {
+				fileURL = msg.FileUrl
+				fileName = msg.FileName
+			}
+			messages = append(messages, &model.Message{
+				ID:       msg.ID,
+				Message:  msg.Content,
+				SenderID: int32(msg.SenderID),
+				ChatID:   msg.ChatID,
+				SentAt:   msg.SendAt,
+				IsRead:   msg.IsRead,
+				IsFile:   msg.IsFile,
+				FileURL:  &fileURL,
+				FileName: &fileName,
+			})
+		}
+	}
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].SentAt.After(messages[j].SentAt)
+	})
+	limit := 50
+	if first != nil && *first > 0 {
+		limit = int(*first)
+	}
+	if len(messages) > limit {
+		messages = messages[:limit]
+	}
+	var nextCursor *string
+	if len(messages) > 0 {
+		last := messages[len(messages)-1]
+		raw := fmt.Sprintf("%s|%s", last.SentAt.Format(time.RFC3339Nano), last.ID)
+		encoded := base64.StdEncoding.EncodeToString([]byte(raw))
+		nextCursor = &encoded
+	}
+	return &model.ChatPage{
+		Messages:   messages,
+		NextCursor: nextCursor,
+	}, nil
+}
+
+// ProjectCallSummaries is the resolver for the projectCallSummaries field.
+func (r *queryResolver) ProjectCallSummaries(ctx context.Context, projectID string, status *string) ([]*model.ProjectCallSummary, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	sessions, err := r.CommunicationService.ListVideoSessionsForProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %v", err)
+	}
+	var result []*model.ProjectCallSummary
+	for _, session := range sessions {
+		if status != nil && *status != "" && session.Status != *status {
+			continue
+		}
+		participantCount, _ := r.CommunicationService.CountParticipants(session.ID)
+		inviteCount, _ := r.CommunicationService.CountInvites(session.ID)
+		result = append(result, &model.ProjectCallSummary{
+			Session:          mapVideoSession(session),
+			ParticipantCount: int32(participantCount),
+			InviteCount:      int32(inviteCount),
+		})
+	}
+	return result, nil
+}
+
+// ProjectCallDetails is the resolver for the projectCallDetails field.
+func (r *queryResolver) ProjectCallDetails(ctx context.Context, projectID string, status *string) ([]*model.ProjectCallDetail, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	sessions, err := r.CommunicationService.ListVideoSessionsForProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %v", err)
+	}
+	var result []*model.ProjectCallDetail
+	for _, session := range sessions {
+		if status != nil && *status != "" && session.Status != *status {
+			continue
+		}
+		participants, _ := r.CommunicationService.ListParticipants(session.ID)
+		invites, _ := r.CommunicationService.ListVideoInvitesForSession(session.ID)
+		var mappedParticipants []*model.VideoSessionParticipant
+		for _, participant := range participants {
+			mappedParticipants = append(mappedParticipants, mapVideoSessionParticipant(participant))
+		}
+		var mappedInvites []*model.VideoSessionInvite
+		for _, invite := range invites {
+			mappedInvites = append(mappedInvites, mapVideoSessionInvite(invite))
+		}
+		result = append(result, &model.ProjectCallDetail{
+			Session:      mapVideoSession(session),
+			Participants: mappedParticipants,
+			Invites:      mappedInvites,
+		})
+	}
+	return result, nil
+}
+
+// ProjectCallStatusCounts is the resolver for the projectCallStatusCounts field.
+func (r *queryResolver) ProjectCallStatusCounts(ctx context.Context, projectID string) ([]*model.ProjectCallStatusCount, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	sessions, err := r.CommunicationService.ListVideoSessionsForProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %v", err)
+	}
+	counts := map[string]int32{}
+	for _, session := range sessions {
+		counts[session.Status]++
+	}
+	var result []*model.ProjectCallStatusCount
+	for status, count := range counts {
+		result = append(result, &model.ProjectCallStatusCount{
+			Status: status,
+			Count:  count,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Status < result[j].Status
+	})
+	return result, nil
+}
+
+// AdminStats is the resolver for the adminStats field.
+func (r *queryResolver) AdminStats(ctx context.Context) (*model.AdminStats, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	stats, err := r.AdminService.AdminStats()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load stats: %v", err)
+	}
+	return &model.AdminStats{
+		Users:        int32(stats.Users),
+		Talents:      int32(stats.Talents),
+		Clients:      int32(stats.Clients),
+		Jobs:         int32(stats.Jobs),
+		Projects:     int32(stats.Projects),
+		Applications: int32(stats.Applications),
+	}, nil
+}
+
+// FeatureFlags is the resolver for the featureFlags field.
+func (r *queryResolver) FeatureFlags(ctx context.Context) ([]*model.FeatureFlag, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	flags, err := r.AdminService.ListFeatureFlags()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load feature flags: %v", err)
+	}
+	var result []*model.FeatureFlag
+	for _, flag := range flags {
+		result = append(result, mapFeatureFlag(flag))
+	}
+	return result, nil
+}
+
+// SkillCategories is the resolver for the skillCategories field.
+func (r *queryResolver) SkillCategories(ctx context.Context) ([]*model.SkillCategory, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	cats, err := r.AdminService.ListSkillCategories()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load skill categories: %v", err)
+	}
+	var result []*model.SkillCategory
+	for _, cat := range cats {
+		result = append(result, mapSkillCategory(cat))
+	}
+	return result, nil
+}
+
+// CompliancePolicies is the resolver for the compliancePolicies field.
+func (r *queryResolver) CompliancePolicies(ctx context.Context) ([]*model.CompliancePolicy, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	policies, err := r.AdminService.ListCompliancePolicies()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load policies: %v", err)
+	}
+	var result []*model.CompliancePolicy
+	for _, policy := range policies {
+		result = append(result, mapCompliancePolicy(policy))
+	}
+	return result, nil
+}
+
+// ComplianceLogs is the resolver for the complianceLogs field.
+func (r *queryResolver) ComplianceLogs(ctx context.Context) ([]*model.ComplianceLog, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	logs, err := r.AdminService.ListComplianceLogs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load logs: %v", err)
+	}
+	var result []*model.ComplianceLog
+	for _, logEntry := range logs {
+		result = append(result, mapComplianceLog(logEntry))
+	}
+	return result, nil
+}
+
+// ComplianceJobs is the resolver for the complianceJobs field.
+func (r *queryResolver) ComplianceJobs(ctx context.Context, status *string) ([]*model.ComplianceJob, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	jobs, err := r.ComplianceService.ListJobs(status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load jobs: %v", err)
+	}
+	var result []*model.ComplianceJob
+	for _, job := range jobs {
+		result = append(result, mapComplianceJob(job))
+	}
+	return result, nil
+}
+
+// ModerationResolutions is the resolver for the moderationResolutions field.
+func (r *queryResolver) ModerationResolutions(ctx context.Context, flagID string) ([]*model.ModerationResolution, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	parsedID, err := parseUintID(flagID)
+	if err != nil {
+		return nil, err
+	}
+	resolutions, err := r.ModerationService.ListResolutions(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load resolutions: %v", err)
+	}
+	var result []*model.ModerationResolution
+	for _, resolution := range resolutions {
+		result = append(result, mapModerationResolution(resolution))
+	}
+	return result, nil
+}
+
+// PublicTalents is the resolver for the publicTalents field.
+func (r *queryResolver) PublicTalents(ctx context.Context, filter *model.PublicTalentFilter) ([]*model.TalentProfile, error) {
+	skill := ""
+	var skills []string
+	location := ""
+	title := ""
+	sortValue := ""
+	limit := 0
+	offset := 0
+	if filter != nil {
+		skill = derefString(filter.Skill)
+		skills = filter.Skills
+		location = derefString(filter.Location)
+		title = derefString(filter.Title)
+		sortValue = derefString(filter.Sort)
+		if filter.Limit != nil {
+			limit = int(*filter.Limit)
+		}
+		if filter.Offset != nil {
+			offset = int(*filter.Offset)
+		}
+	}
+	var profiles []*models.TalentProfile
+	var err error
+	if skill != "" || location != "" || title != "" || len(skills) > 0 || sortValue != "" || limit > 0 || offset > 0 {
+		profiles, err = r.AdminService.ListPublicTalentsFiltered(skill, skills, location, title, sortValue, limit, offset)
+	} else {
+		profiles, err = r.AdminService.ListPublicTalents()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to load public talents")
+	}
+	var result []*model.TalentProfile
+	for _, profile := range profiles {
+		result = append(result, mapTalentProfile(profile))
+	}
+	return result, nil
+}
+
+// PublicTalentsPage is the resolver for the publicTalentsPage field.
+func (r *queryResolver) PublicTalentsPage(ctx context.Context, filter *model.PublicTalentFilter, first *int32, after *string) (*model.PublicTalentPage, error) {
+	skill := ""
+	var skills []string
+	location := ""
+	title := ""
+	sortValue := ""
+	if filter != nil {
+		skill = derefString(filter.Skill)
+		skills = filter.Skills
+		location = derefString(filter.Location)
+		title = derefString(filter.Title)
+		sortValue = derefString(filter.Sort)
+	}
+	var profiles []*models.TalentProfile
+	var err error
+	if skill != "" || location != "" || title != "" || len(skills) > 0 || sortValue != "" {
+		profiles, err = r.AdminService.ListPublicTalentsFiltered(skill, skills, location, title, sortValue, 0, 0)
+	} else {
+		profiles, err = r.AdminService.ListPublicTalents()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to load public talents")
+	}
+	var cursorTime time.Time
+	var cursorID uint
+	if after != nil && *after != "" {
+		if decoded, err := base64.StdEncoding.DecodeString(*after); err == nil {
+			parts := strings.SplitN(string(decoded), "|", 2)
+			if len(parts) == 2 {
+				if ts, err := time.Parse(time.RFC3339Nano, parts[0]); err == nil {
+					cursorTime = ts
+					if parsed, err := strconv.ParseUint(parts[1], 10, 32); err == nil {
+						cursorID = uint(parsed)
+					}
+				}
+			}
+		}
+	}
+	// Ensure ordering by updated_at desc for cursor pagination
+	sort.Slice(profiles, func(i, j int) bool {
+		if profiles[i].UpdatedAt.Equal(profiles[j].UpdatedAt) {
+			return profiles[i].ID > profiles[j].ID
+		}
+		return profiles[i].UpdatedAt.After(profiles[j].UpdatedAt)
+	})
+	var filtered []*models.TalentProfile
+	for _, profile := range profiles {
+		if !cursorTime.IsZero() {
+			if profile.UpdatedAt.After(cursorTime) || (profile.UpdatedAt.Equal(cursorTime) && profile.ID >= cursorID) {
+				continue
+			}
+		}
+		filtered = append(filtered, profile)
+	}
+	limit := 20
+	if first != nil && *first > 0 {
+		limit = int(*first)
+	}
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	var items []*model.TalentProfile
+	for _, profile := range filtered {
+		items = append(items, mapTalentProfile(profile))
+	}
+	var nextCursor *string
+	if len(filtered) > 0 {
+		last := filtered[len(filtered)-1]
+		raw := fmt.Sprintf("%s|%d", last.UpdatedAt.Format(time.RFC3339Nano), last.ID)
+		encoded := base64.StdEncoding.EncodeToString([]byte(raw))
+		nextCursor = &encoded
+	}
+	return &model.PublicTalentPage{
+		Items:      items,
+		NextCursor: nextCursor,
+	}, nil
+}
+
+// PublicTalent is the resolver for the publicTalent field.
+func (r *queryResolver) PublicTalent(ctx context.Context, userID string) (*model.TalentProfile, error) {
+	parsed, err := parseUintID(userID)
+	if err != nil {
+		return nil, err
+	}
+	profile, err := r.AdminService.GetPublicTalentByUser(parsed)
+	if err != nil {
+		return nil, fmt.Errorf("profile not found")
+	}
+	return mapTalentProfile(profile), nil
+}
+
+// PublicProjects is the resolver for the publicProjects field.
+func (r *queryResolver) PublicProjects(ctx context.Context, filter *model.PublicProjectFilter) ([]*model.Project, error) {
+	category := ""
+	status := ""
+	var ownerID *uint
+	sortValue := ""
+	limit := 0
+	offset := 0
+	if filter != nil {
+		category = derefString(filter.Category)
+		status = derefString(filter.Status)
+		sortValue = derefString(filter.Sort)
+		if filter.Limit != nil {
+			limit = int(*filter.Limit)
+		}
+		if filter.Offset != nil {
+			offset = int(*filter.Offset)
+		}
+		if filter.OwnerID != nil && *filter.OwnerID != "" {
+			parsed, err := parseUintID(*filter.OwnerID)
+			if err == nil {
+				ownerID = &parsed
+			}
+		}
+	}
+	var projects []*models.Project
+	var err error
+	if category != "" || status != "" || ownerID != nil || sortValue != "" || limit > 0 || offset > 0 {
+		projects, err = r.AdminService.ListPublicProjectsFiltered(category, status, ownerID, sortValue, limit, offset)
+	} else {
+		projects, err = r.AdminService.ListPublicProjects()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to load public projects")
+	}
+	var result []*model.Project
+	for _, project := range projects {
+		result = append(result, mapProject(project))
+	}
+	return result, nil
+}
+
+// PublicProjectsPage is the resolver for the publicProjectsPage field.
+func (r *queryResolver) PublicProjectsPage(ctx context.Context, filter *model.PublicProjectFilter, first *int32, after *string) (*model.PublicProjectPage, error) {
+	category := ""
+	status := ""
+	var ownerID *uint
+	sortValue := ""
+	if filter != nil {
+		category = derefString(filter.Category)
+		status = derefString(filter.Status)
+		sortValue = derefString(filter.Sort)
+		if filter.OwnerID != nil && *filter.OwnerID != "" {
+			if parsed, err := parseUintID(*filter.OwnerID); err == nil {
+				ownerID = &parsed
+			}
+		}
+	}
+	var projects []*models.Project
+	var err error
+	if category != "" || status != "" || ownerID != nil || sortValue != "" {
+		projects, err = r.AdminService.ListPublicProjectsFiltered(category, status, ownerID, sortValue, 0, 0)
+	} else {
+		projects, err = r.AdminService.ListPublicProjects()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to load public projects")
+	}
+	var cursorTime time.Time
+	var cursorID uint
+	if after != nil && *after != "" {
+		if decoded, err := base64.StdEncoding.DecodeString(*after); err == nil {
+			parts := strings.SplitN(string(decoded), "|", 2)
+			if len(parts) == 2 {
+				if ts, err := time.Parse(time.RFC3339Nano, parts[0]); err == nil {
+					cursorTime = ts
+					if parsed, err := strconv.ParseUint(parts[1], 10, 32); err == nil {
+						cursorID = uint(parsed)
+					}
+				}
+			}
+		}
+	}
+	sort.Slice(projects, func(i, j int) bool {
+		if projects[i].UpdatedAt.Equal(projects[j].UpdatedAt) {
+			return projects[i].ID > projects[j].ID
+		}
+		return projects[i].UpdatedAt.After(projects[j].UpdatedAt)
+	})
+	var filtered []*models.Project
+	for _, project := range projects {
+		if !cursorTime.IsZero() {
+			if project.UpdatedAt.After(cursorTime) || (project.UpdatedAt.Equal(cursorTime) && project.ID >= cursorID) {
+				continue
+			}
+		}
+		filtered = append(filtered, project)
+	}
+	limit := 20
+	if first != nil && *first > 0 {
+		limit = int(*first)
+	}
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	var items []*model.Project
+	for _, project := range filtered {
+		items = append(items, mapProject(project))
+	}
+	var nextCursor *string
+	if len(filtered) > 0 {
+		last := filtered[len(filtered)-1]
+		raw := fmt.Sprintf("%s|%d", last.UpdatedAt.Format(time.RFC3339Nano), last.ID)
+		encoded := base64.StdEncoding.EncodeToString([]byte(raw))
+		nextCursor = &encoded
+	}
+	return &model.PublicProjectPage{
+		Items:      items,
+		NextCursor: nextCursor,
+	}, nil
+}
+
+// PublicProject is the resolver for the publicProject field.
+func (r *queryResolver) PublicProject(ctx context.Context, id string) (*model.Project, error) {
+	projectID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.AdminService.GetPublicProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	_ = r.ProjectService.IncrementProjectView(projectID)
+	return mapProject(project), nil
 }
 
 // MessageSent is the resolver for the messageSent field.
@@ -814,9 +2921,46 @@ func (r *subscriptionResolver) MessageSent(ctx context.Context, chatID string) (
 	return msgChan, nil
 }
 
+// AuditLogCreated is the resolver for the auditLogCreated field.
+func (r *subscriptionResolver) AuditLogCreated(ctx context.Context) (<-chan *model.AuditLog, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	logChan := make(chan *model.AuditLog, 1)
+	genChan := make(chan interface{}, 1)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data, ok := <-genChan:
+				if !ok {
+					return
+				}
+				if item, ok := data.(*models.AuditLog); ok {
+					logChan <- &model.AuditLog{
+						ID:        fmt.Sprintf("%d", item.ID),
+						Action:    item.Action,
+						TargetID:  &item.TargetID,
+						Timestamp: item.Timestamp.Format(time.RFC3339),
+						Metadata:  &item.Metadata,
+					}
+				}
+			}
+		}
+	}()
+
+	if err := r.PubSub.Subscribe("audit:log", genChan); err != nil {
+		return nil, err
+	}
+
+	return logChan, nil
+}
+
 // NewNotification is the resolver for the newNotification field.
 func (r *subscriptionResolver) NewNotification(ctx context.Context) (<-chan string, error) {
-	panic(fmt.Errorf("not implemented: NewNotification - newNotification"))
+	return nil, fmt.Errorf("not implemented: NewNotification")
 }
 
 // SendRTCSignal is the resolver for the SendRTCSignal field.
@@ -902,6 +3046,2763 @@ func (r *mutationResolver) VerifySecureJobLink(ctx context.Context, token string
 		Description: job.Description,
 		Location:    job.Location,
 		SalaryRange: &job.SalaryRange,
+	}, nil
+}
+
+// CreateNotification is the resolver for the CreateNotification field.
+func (r *mutationResolver) CreateNotification(ctx context.Context, userID string, title string, content string, typeArg *model.NotificationType, priority *model.NotificationPriority, actionURL *string, expiresAt *string) (*model.Notification, error) {
+	id, err := strconv.ParseUint(userID, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user id")
+	}
+
+	notificationType := model.NotificationType("TRANSACTIONAL")
+	if typeArg != nil {
+		notificationType = *typeArg
+	}
+	notificationPriority := model.NotificationPriority("NORMAL")
+	if priority != nil {
+		notificationPriority = *priority
+	}
+
+	var expiresAtTime *time.Time
+	if expiresAt != nil && *expiresAt != "" {
+		parsed, err := time.Parse(time.RFC3339, *expiresAt)
+		if err != nil {
+			return nil, fmt.Errorf("invalid expiresAt format (use RFC3339)")
+		}
+		expiresAtTime = &parsed
+	}
+
+	notification := &models.Notification{
+		UserID:   uint(id),
+		Title:    title,
+		Content:  content,
+		Type:     models.NotificationType(notificationType),
+		Priority: models.NotificationPriority(notificationPriority),
+		IsRead:   false,
+	}
+	if actionURL != nil {
+		notification.ActionURL = *actionURL
+	}
+	notification.ExpiresAt = expiresAtTime
+
+	created, err := r.NotificationService.CreateNotification(notification)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create notification: %v", err)
+	}
+
+	var createdExpiresAt *string
+	if created.ExpiresAt != nil {
+		formatted := created.ExpiresAt.Format(time.RFC3339)
+		createdExpiresAt = &formatted
+	}
+	return &model.Notification{
+		ID:        fmt.Sprintf("%d", created.ID),
+		Title:     created.Title,
+		Content:   created.Content,
+		Type:      model.NotificationType(created.Type),
+		Priority:  model.NotificationPriority(created.Priority),
+		IsRead:    created.IsRead,
+		ActionURL: &created.ActionURL,
+		CreatedAt: created.CreatedAt.Format(time.RFC3339),
+		ExpiresAt: createdExpiresAt,
+	}, nil
+}
+
+// CreateEmailSenderProfile is the resolver for the CreateEmailSenderProfile field.
+func (r *mutationResolver) CreateEmailSenderProfile(ctx context.Context, input model.EmailSenderProfileInput) (*model.EmailSenderProfile, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	profile := &models.EmailSenderProfile{
+		Label:    input.Label,
+		Email:    input.Email,
+		Password: derefString(input.Password),
+		APIKey:   derefString(input.APIKey),
+		Provider: string(input.Provider),
+		IsActive: derefBool(input.IsActive),
+	}
+	created, err := r.NotificationService.CreateSenderProfile(profile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sender profile: %v", err)
+	}
+	return &model.EmailSenderProfile{
+		ID:        fmt.Sprintf("%d", created.ID),
+		Label:     created.Label,
+		Email:     created.Email,
+		Provider:  model.SenderProvider(created.Provider),
+		IsActive:  created.IsActive,
+		CreatedAt: created.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// UpdateEmailSenderProfile is the resolver for the UpdateEmailSenderProfile field.
+func (r *mutationResolver) UpdateEmailSenderProfile(ctx context.Context, id string, input model.EmailSenderProfileUpdateInput) (*model.EmailSenderProfile, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	senderID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid sender id")
+	}
+	updates := &models.EmailSenderProfile{
+		Label:    derefString(input.Label),
+		Email:    derefString(input.Email),
+		Password: derefString(input.Password),
+		APIKey:   derefString(input.APIKey),
+		Provider: string(derefSenderProvider(input.Provider)),
+		IsActive: derefBool(input.IsActive),
+	}
+	updated, err := r.NotificationService.UpdateSenderProfile(uint(senderID), updates)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update sender profile: %v", err)
+	}
+	return &model.EmailSenderProfile{
+		ID:        fmt.Sprintf("%d", updated.ID),
+		Label:     updated.Label,
+		Email:     updated.Email,
+		Provider:  model.SenderProvider(updated.Provider),
+		IsActive:  updated.IsActive,
+		CreatedAt: updated.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// DeleteEmailSenderProfile is the resolver for the DeleteEmailSenderProfile field.
+func (r *mutationResolver) DeleteEmailSenderProfile(ctx context.Context, id string) (bool, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	senderID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return false, fmt.Errorf("invalid sender id")
+	}
+	return r.NotificationService.DeleteSenderProfile(uint(senderID))
+}
+
+// UpdateEmailRoutingConfig is the resolver for the UpdateEmailRoutingConfig field.
+func (r *mutationResolver) UpdateEmailRoutingConfig(ctx context.Context, input model.EmailRoutingInput) (*model.EmailRoutingConfig, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	cfg := &models.EmailRoutingConfig{
+		NotificationsSenderID: parseOptionalID(input.NotificationsSenderID),
+		AnnouncementsSenderID: parseOptionalID(input.AnnouncementsSenderID),
+		NewslettersSenderID:   parseOptionalID(input.NewslettersSenderID),
+	}
+	updated, err := r.NotificationService.UpdateRoutingConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update routing config: %v", err)
+	}
+	var notifID *string
+	var annID *string
+	var newsID *string
+	if updated.NotificationsSenderID != nil {
+		val := fmt.Sprintf("%d", *updated.NotificationsSenderID)
+		notifID = &val
+	}
+	if updated.AnnouncementsSenderID != nil {
+		val := fmt.Sprintf("%d", *updated.AnnouncementsSenderID)
+		annID = &val
+	}
+	if updated.NewslettersSenderID != nil {
+		val := fmt.Sprintf("%d", *updated.NewslettersSenderID)
+		newsID = &val
+	}
+	return &model.EmailRoutingConfig{
+		ID:                    fmt.Sprintf("%d", updated.ID),
+		NotificationsSenderID: notifID,
+		AnnouncementsSenderID: annID,
+		NewslettersSenderID:   newsID,
+	}, nil
+}
+
+// CreateEmailTemplate is the resolver for the CreateEmailTemplate field.
+func (r *mutationResolver) CreateEmailTemplate(ctx context.Context, input model.EmailTemplateInput) (*model.EmailTemplate, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	tpl := &models.EmailTemplate{
+		Name:    input.Name,
+		Trigger: input.Trigger,
+		Subject: input.Subject,
+		Body:    input.Body,
+		Channel: derefString(input.Channel),
+		Status:  derefString(input.Status),
+	}
+	created, err := r.NotificationService.CreateEmailTemplate(tpl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create template: %v", err)
+	}
+	return &model.EmailTemplate{
+		ID:      fmt.Sprintf("%d", created.ID),
+		Name:    created.Name,
+		Trigger: created.Trigger,
+		Subject: created.Subject,
+		Body:    created.Body,
+		Channel: created.Channel,
+		Status:  created.Status,
+	}, nil
+}
+
+// UpdateEmailTemplate is the resolver for the UpdateEmailTemplate field.
+func (r *mutationResolver) UpdateEmailTemplate(ctx context.Context, id string, input model.EmailTemplateUpdateInput) (*model.EmailTemplate, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	templateID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid template id")
+	}
+	updates := &models.EmailTemplate{
+		Name:    derefString(input.Name),
+		Trigger: derefString(input.Trigger),
+		Subject: derefString(input.Subject),
+		Body:    derefString(input.Body),
+		Channel: derefString(input.Channel),
+		Status:  derefString(input.Status),
+	}
+	updated, err := r.NotificationService.UpdateEmailTemplate(uint(templateID), updates)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update template: %v", err)
+	}
+	return &model.EmailTemplate{
+		ID:      fmt.Sprintf("%d", updated.ID),
+		Name:    updated.Name,
+		Trigger: updated.Trigger,
+		Subject: updated.Subject,
+		Body:    updated.Body,
+		Channel: updated.Channel,
+		Status:  updated.Status,
+	}, nil
+}
+
+// DeleteEmailTemplate is the resolver for the DeleteEmailTemplate field.
+func (r *mutationResolver) DeleteEmailTemplate(ctx context.Context, id string) (bool, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	templateID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return false, fmt.Errorf("invalid template id")
+	}
+	return r.NotificationService.DeleteEmailTemplate(uint(templateID))
+}
+
+// CreateAnnouncement is the resolver for the CreateAnnouncement field.
+func (r *mutationResolver) CreateAnnouncement(ctx context.Context, input model.AnnouncementInput) (*model.Announcement, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	announcement := &models.Announcement{
+		Title:    input.Title,
+		Content:  input.Content,
+		Category: input.Category,
+		Priority: derefString(input.Priority),
+		Author:   derefString(input.Author),
+	}
+	created, err := r.NotificationService.CreateAnnouncement(announcement)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create announcement: %v", err)
+	}
+	return &model.Announcement{
+		ID:        fmt.Sprintf("%d", created.ID),
+		Title:     created.Title,
+		Content:   created.Content,
+		Category:  created.Category,
+		Priority:  created.Priority,
+		Author:    created.Author,
+		CreatedAt: created.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// CreateNewsletter is the resolver for the CreateNewsletter field.
+func (r *mutationResolver) CreateNewsletter(ctx context.Context, input model.NewsletterInput) (*model.Newsletter, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	newsletter := &models.Newsletter{
+		Subject:   input.Subject,
+		Preheader: derefString(input.Preheader),
+		Content:   input.Content,
+		Segment:   derefString(input.Segment),
+		Status:    models.NewsletterDraft,
+	}
+	created, err := r.NotificationService.CreateNewsletter(newsletter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create newsletter: %v", err)
+	}
+	return &model.Newsletter{
+		ID:        fmt.Sprintf("%d", created.ID),
+		Subject:   created.Subject,
+		Preheader: &created.Preheader,
+		Content:   created.Content,
+		Segment:   created.Segment,
+		Status:    model.NewsletterStatus(created.Status),
+		CreatedAt: created.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// UpdateNewsletter is the resolver for the UpdateNewsletter field.
+func (r *mutationResolver) UpdateNewsletter(ctx context.Context, id string, input model.NewsletterUpdateInput) (*model.Newsletter, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	newsletterID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid newsletter id")
+	}
+	updates := &models.Newsletter{
+		Subject:   derefString(input.Subject),
+		Preheader: derefString(input.Preheader),
+		Content:   derefString(input.Content),
+		Segment:   derefString(input.Segment),
+		Status:    models.NewsletterStatus(derefNewsletterStatus(input.Status)),
+	}
+	updated, err := r.NotificationService.UpdateNewsletter(uint(newsletterID), updates)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update newsletter: %v", err)
+	}
+	return &model.Newsletter{
+		ID:        fmt.Sprintf("%d", updated.ID),
+		Subject:   updated.Subject,
+		Preheader: &updated.Preheader,
+		Content:   updated.Content,
+		Segment:   updated.Segment,
+		Status:    model.NewsletterStatus(updated.Status),
+		CreatedAt: updated.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// ScheduleNewsletter is the resolver for the ScheduleNewsletter field.
+func (r *mutationResolver) ScheduleNewsletter(ctx context.Context, id string, scheduledAt string) (*model.Newsletter, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	newsletterID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid newsletter id")
+	}
+	parsed, err := time.Parse(time.RFC3339, scheduledAt)
+	if err != nil {
+		return nil, fmt.Errorf("invalid scheduledAt format (use RFC3339)")
+	}
+	updated, err := r.NotificationService.ScheduleNewsletter(uint(newsletterID), parsed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to schedule newsletter: %v", err)
+	}
+	scheduled := updated.ScheduledAt.Format(time.RFC3339)
+	return &model.Newsletter{
+		ID:          fmt.Sprintf("%d", updated.ID),
+		Subject:     updated.Subject,
+		Preheader:   &updated.Preheader,
+		Content:     updated.Content,
+		Segment:     updated.Segment,
+		Status:      model.NewsletterStatus(updated.Status),
+		ScheduledAt: &scheduled,
+		CreatedAt:   updated.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// SendNewsletterNow is the resolver for the SendNewsletterNow field.
+func (r *mutationResolver) SendNewsletterNow(ctx context.Context, id string) (*model.Newsletter, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	newsletterID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid newsletter id")
+	}
+	updated, err := r.NotificationService.MarkNewsletterSent(uint(newsletterID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to mark newsletter sent: %v", err)
+	}
+	sent := updated.SentAt.Format(time.RFC3339)
+	return &model.Newsletter{
+		ID:        fmt.Sprintf("%d", updated.ID),
+		Subject:   updated.Subject,
+		Preheader: &updated.Preheader,
+		Content:   updated.Content,
+		Segment:   updated.Segment,
+		Status:    model.NewsletterStatus(updated.Status),
+		SentAt:    &sent,
+		CreatedAt: updated.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// CreateComplianceRequest is the resolver for the CreateComplianceRequest field.
+func (r *mutationResolver) CreateComplianceRequest(ctx context.Context, input model.ComplianceRequestInput) (*model.ComplianceRequest, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req, err := r.ComplianceService.CreateRequest(userID, models.ComplianceRequestType(input.Type), derefString(input.Notes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+	return &model.ComplianceRequest{
+		ID:        fmt.Sprintf("%d", req.ID),
+		UserID:    fmt.Sprintf("%d", req.UserID),
+		Type:      model.ComplianceRequestType(req.Type),
+		Status:    req.Status,
+		Notes:     &req.Notes,
+		CreatedAt: req.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// UpdateComplianceRequest is the resolver for the UpdateComplianceRequest field.
+func (r *mutationResolver) UpdateComplianceRequest(ctx context.Context, id string, input model.ComplianceRequestUpdateInput) (*model.ComplianceRequest, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	requestID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid request id")
+	}
+	req, err := r.ComplianceService.UpdateRequestStatus(uint(requestID), input.Status, derefString(input.Notes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to update request: %v", err)
+	}
+	adminID, _ := utils.GetUserIDFromContext(ctx)
+	_, _ = r.AdminService.CreateComplianceLog(&models.ComplianceLog{
+		ActorID: &adminID,
+		Action:  "COMPLIANCE_REQUEST_UPDATED",
+		Details: fmt.Sprintf("RequestID:%d Status:%s", requestID, input.Status),
+	})
+	return &model.ComplianceRequest{
+		ID:        fmt.Sprintf("%d", req.ID),
+		UserID:    fmt.Sprintf("%d", req.UserID),
+		Type:      model.ComplianceRequestType(req.Type),
+		Status:    req.Status,
+		Notes:     &req.Notes,
+		CreatedAt: req.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// EnqueueComplianceJob is the resolver for the EnqueueComplianceJob field.
+func (r *mutationResolver) EnqueueComplianceJob(ctx context.Context, requestID string) (*model.ComplianceJob, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	reqID, err := parseUintID(requestID)
+	if err != nil {
+		return nil, err
+	}
+	req, err := r.ComplianceService.UpdateRequestStatus(reqID, "PROCESSING", "")
+	if err != nil {
+		return nil, fmt.Errorf("request not found")
+	}
+	job, err := r.ComplianceService.EnqueueJob(reqID, req.Type)
+	if err != nil {
+		return nil, fmt.Errorf("failed to enqueue job: %v", err)
+	}
+	return mapComplianceJob(job), nil
+}
+
+// UpdateComplianceJob is the resolver for the UpdateComplianceJob field.
+func (r *mutationResolver) UpdateComplianceJob(ctx context.Context, id string, input model.ComplianceJobUpdateInput) (*model.ComplianceJob, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	jobID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	job, err := r.ComplianceService.UpdateJobStatus(jobID, input.Status, derefString(input.Result))
+	if err != nil {
+		return nil, fmt.Errorf("failed to update job: %v", err)
+	}
+	return mapComplianceJob(job), nil
+}
+
+// CreateRole is the resolver for the CreateRole field.
+func (r *mutationResolver) CreateRole(ctx context.Context, input model.RoleInput) (*model.Role, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	role := &models.Role{
+		Name:     input.Name,
+		Summary:  derefString(input.Summary),
+		IsSystem: derefBool(input.IsSystem),
+	}
+	created, err := r.RBACService.CreateRole(role)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create role: %v", err)
+	}
+	return &model.Role{
+		ID:          fmt.Sprintf("%d", created.ID),
+		Name:        created.Name,
+		Summary:     &created.Summary,
+		IsSystem:    created.IsSystem,
+		Permissions: []*model.Permission{},
+	}, nil
+}
+
+// UpdateRole is the resolver for the UpdateRole field.
+func (r *mutationResolver) UpdateRole(ctx context.Context, id string, input model.RoleUpdateInput) (*model.Role, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	roleID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid role id")
+	}
+	updates := &models.Role{
+		Name:     derefString(input.Name),
+		Summary:  derefString(input.Summary),
+		IsSystem: derefBool(input.IsSystem),
+	}
+	updated, err := r.RBACService.UpdateRole(uint(roleID), updates)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update role: %v", err)
+	}
+	return &model.Role{
+		ID:          fmt.Sprintf("%d", updated.ID),
+		Name:        updated.Name,
+		Summary:     &updated.Summary,
+		IsSystem:    updated.IsSystem,
+		Permissions: []*model.Permission{},
+	}, nil
+}
+
+// DeleteRole is the resolver for the DeleteRole field.
+func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	roleID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return false, fmt.Errorf("invalid role id")
+	}
+	return r.RBACService.DeleteRole(uint(roleID))
+}
+
+// CreatePermission is the resolver for the CreatePermission field.
+func (r *mutationResolver) CreatePermission(ctx context.Context, input model.PermissionInput) (*model.Permission, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	perm := &models.Permission{
+		Key:         input.Key,
+		Description: derefString(input.Description),
+	}
+	created, err := r.RBACService.CreatePermission(perm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create permission: %v", err)
+	}
+	return &model.Permission{
+		ID:          fmt.Sprintf("%d", created.ID),
+		Key:         created.Key,
+		Description: &created.Description,
+	}, nil
+}
+
+// SetRolePermissions is the resolver for the SetRolePermissions field.
+func (r *mutationResolver) SetRolePermissions(ctx context.Context, roleID string, permissionIDs []string) (*model.Role, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	rid, err := strconv.ParseUint(roleID, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid role id")
+	}
+	var ids []uint
+	for _, id := range permissionIDs {
+		parsed, err := strconv.ParseUint(id, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid permission id")
+		}
+		ids = append(ids, uint(parsed))
+	}
+	updated, err := r.RBACService.SetRolePermissions(uint(rid), ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set permissions: %v", err)
+	}
+	var perms []*model.Permission
+	for _, p := range updated.Permissions {
+		perms = append(perms, &model.Permission{
+			ID:          fmt.Sprintf("%d", p.ID),
+			Key:         p.Key,
+			Description: &p.Description,
+		})
+	}
+	return &model.Role{
+		ID:          fmt.Sprintf("%d", updated.ID),
+		Name:        updated.Name,
+		Summary:     &updated.Summary,
+		IsSystem:    updated.IsSystem,
+		Permissions: perms,
+	}, nil
+}
+
+// UpsertTalentProfile is the resolver for the UpsertTalentProfile field.
+func (r *mutationResolver) UpsertTalentProfile(ctx context.Context, input model.TalentProfileInput) (*model.TalentProfile, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	updates := &models.TalentProfile{
+		ProfessionalTitle: derefString(input.ProfessionalTitle),
+		Bio:               derefString(input.Bio),
+		Location:          derefString(input.Location),
+		ProfileImageURL:   derefString(input.ProfileImageURL),
+		CompletionPercent: derefInt(input.CompletionPercent),
+		IsPublic:          derefBool(input.IsPublic),
+	}
+	profile, err := r.ProfileService.UpsertProfile(userID, updates)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update profile: %v", err)
+	}
+	if input.IsPublic != nil {
+		profile, err = r.ProfileService.SetPublic(userID, *input.IsPublic)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update visibility: %v", err)
+		}
+	}
+	return mapTalentProfile(profile), nil
+}
+
+// AddSkill is the resolver for the AddSkill field.
+func (r *mutationResolver) AddSkill(ctx context.Context, input model.SkillInput) (*model.Skill, error) {
+	profileID, err := r.resolveProfileID(ctx, input.ProfileID)
+	if err != nil {
+		return nil, err
+	}
+	skill, err := r.ProfileService.AddSkill(profileID, &models.Skill{
+		SkillName:        input.SkillName,
+		ProficiencyLevel: derefString(input.ProficiencyLevel),
+		Category:         derefString(input.Category),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to add skill: %v", err)
+	}
+	return mapSkill(skill), nil
+}
+
+// UpdateSkill is the resolver for the UpdateSkill field.
+func (r *mutationResolver) UpdateSkill(ctx context.Context, id string, input model.SkillUpdateInput) (*model.Skill, error) {
+	skillID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid skill id")
+	}
+	skill, err := r.ProfileService.UpdateSkill(uint(skillID), &models.Skill{
+		SkillName:        derefString(input.SkillName),
+		ProficiencyLevel: derefString(input.ProficiencyLevel),
+		Category:         derefString(input.Category),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update skill: %v", err)
+	}
+	return mapSkill(skill), nil
+}
+
+// DeleteSkill is the resolver for the DeleteSkill field.
+func (r *mutationResolver) DeleteSkill(ctx context.Context, id string) (bool, error) {
+	skillID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return false, fmt.Errorf("invalid skill id")
+	}
+	return r.ProfileService.DeleteSkill(uint(skillID))
+}
+
+// AddExperience is the resolver for the AddExperience field.
+func (r *mutationResolver) AddExperience(ctx context.Context, input model.ExperienceInput) (*model.Experience, error) {
+	profileID, err := r.resolveProfileID(ctx, input.ProfileID)
+	if err != nil {
+		return nil, err
+	}
+	startDate, err := parseTimeString(input.StartDate)
+	if err != nil {
+		return nil, err
+	}
+	endDate, err := parseOptionalTimeString(input.EndDate)
+	if err != nil {
+		return nil, err
+	}
+	isCurrent := false
+	if input.IsCurrent != nil {
+		isCurrent = *input.IsCurrent
+	}
+	exp, err := r.ProfileService.AddExperience(profileID, &models.Experience{
+		JobTitle:    input.JobTitle,
+		CompanyName: input.CompanyName,
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Description: derefString(input.Description),
+		IsCurrent:   isCurrent,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to add experience: %v", err)
+	}
+	return mapExperience(exp), nil
+}
+
+// UpdateExperience is the resolver for the UpdateExperience field.
+func (r *mutationResolver) UpdateExperience(ctx context.Context, id string, input model.ExperienceUpdateInput) (*model.Experience, error) {
+	expID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid experience id")
+	}
+	startDate, err := parseOptionalTimeString(input.StartDate)
+	if err != nil {
+		return nil, err
+	}
+	endDate, err := parseOptionalTimeString(input.EndDate)
+	if err != nil {
+		return nil, err
+	}
+	exp, err := r.ProfileService.UpdateExperience(uint(expID), &models.Experience{
+		JobTitle:    derefString(input.JobTitle),
+		CompanyName: derefString(input.CompanyName),
+		StartDate:   derefTime(startDate),
+		EndDate:     endDate,
+		Description: derefString(input.Description),
+		IsCurrent:   derefBool(input.IsCurrent),
+	}, input.IsCurrent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update experience: %v", err)
+	}
+	return mapExperience(exp), nil
+}
+
+// DeleteExperience is the resolver for the DeleteExperience field.
+func (r *mutationResolver) DeleteExperience(ctx context.Context, id string) (bool, error) {
+	expID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return false, fmt.Errorf("invalid experience id")
+	}
+	return r.ProfileService.DeleteExperience(uint(expID))
+}
+
+// AddWorkSample is the resolver for the AddWorkSample field.
+func (r *mutationResolver) AddWorkSample(ctx context.Context, input model.WorkSampleInput) (*model.WorkSample, error) {
+	profileID, err := r.resolveProfileID(ctx, input.ProfileID)
+	if err != nil {
+		return nil, err
+	}
+	ws, err := r.ProfileService.AddWorkSample(profileID, &models.WorkSample{
+		Title:        derefString(input.Title),
+		Description:  derefString(input.Description),
+		ImageURL:     input.ImageURL,
+		ExternalLink: derefString(input.ExternalLink),
+		DisplayOrder: derefInt(input.DisplayOrder),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to add work sample: %v", err)
+	}
+	return mapWorkSample(ws), nil
+}
+
+// UpdateWorkSample is the resolver for the UpdateWorkSample field.
+func (r *mutationResolver) UpdateWorkSample(ctx context.Context, id string, input model.WorkSampleUpdateInput) (*model.WorkSample, error) {
+	wsID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid work sample id")
+	}
+	ws, err := r.ProfileService.UpdateWorkSample(uint(wsID), &models.WorkSample{
+		Title:        derefString(input.Title),
+		Description:  derefString(input.Description),
+		ImageURL:     derefString(input.ImageURL),
+		ExternalLink: derefString(input.ExternalLink),
+		DisplayOrder: derefInt(input.DisplayOrder),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update work sample: %v", err)
+	}
+	return mapWorkSample(ws), nil
+}
+
+// DeleteWorkSample is the resolver for the DeleteWorkSample field.
+func (r *mutationResolver) DeleteWorkSample(ctx context.Context, id string) (bool, error) {
+	wsID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return false, fmt.Errorf("invalid work sample id")
+	}
+	return r.ProfileService.DeleteWorkSample(uint(wsID))
+}
+
+// CreateProject is the resolver for the CreateProject field.
+func (r *mutationResolver) CreateProject(ctx context.Context, input model.ProjectInput) (*model.Project, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.CreateProject(userID, &models.Project{
+		Title:       input.Title,
+		Description: derefString(input.Description),
+		Status:      derefString(input.Status),
+		IsPublic:    derefBool(input.IsPublic),
+		CoverImage:  derefString(input.CoverImage),
+		Summary:     derefString(input.Summary),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create project: %v", err)
+	}
+	return mapProject(project), nil
+}
+
+// UpdateProject is the resolver for the UpdateProject field.
+func (r *mutationResolver) UpdateProject(ctx context.Context, id string, input model.ProjectUpdateInput) (*model.Project, error) {
+	projectID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	updated, err := r.ProjectService.UpdateProject(projectID, &models.Project{
+		Title:       derefString(input.Title),
+		Description: derefString(input.Description),
+		Status:      derefString(input.Status),
+		IsPublic:    derefBool(input.IsPublic),
+		CoverImage:  derefString(input.CoverImage),
+		Summary:     derefString(input.Summary),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update project: %v", err)
+	}
+	return mapProject(updated), nil
+}
+
+// DeleteProject is the resolver for the DeleteProject field.
+func (r *mutationResolver) DeleteProject(ctx context.Context, id string) (bool, error) {
+	projectID, err := parseUintID(id)
+	if err != nil {
+		return false, err
+	}
+	project, err := r.ProjectService.GetProject(projectID)
+	if err != nil {
+		return false, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		return false, fmt.Errorf("unauthorized: project access denied")
+	}
+	return r.ProjectService.DeleteProject(projectID)
+}
+
+// InviteToProject is the resolver for the InviteToProject field.
+func (r *mutationResolver) InviteToProject(ctx context.Context, input model.ProjectInviteInput) (*model.ProjectInvitation, error) {
+	projectID, err := parseUintID(input.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	if (input.InviteeID == nil || *input.InviteeID == "") && (input.InviteeEmail == nil || *input.InviteeEmail == "") {
+		return nil, fmt.Errorf("inviteeId or inviteeEmail is required")
+	}
+
+	var inviteeID *uint
+	if input.InviteeID != nil && *input.InviteeID != "" {
+		parsed, err := parseUintID(*input.InviteeID)
+		if err != nil {
+			return nil, err
+		}
+		inviteeID = &parsed
+	}
+	inviteeEmail := derefString(input.InviteeEmail)
+	if inviteeID == nil && inviteeEmail != "" {
+		if user, err := r.UserService.FindByEmail(inviteeEmail); err == nil {
+			id := user.ID
+			inviteeID = &id
+		}
+	}
+	invite, err := r.ProjectService.InviteToProject(projectID, userID, inviteeID, inviteeEmail, derefString(input.Role), derefString(input.Message))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create invitation: %v", err)
+	}
+	return mapProjectInvitation(invite), nil
+}
+
+// RespondToProjectInvitation is the resolver for the RespondToProjectInvitation field.
+func (r *mutationResolver) RespondToProjectInvitation(ctx context.Context, id string, accept bool) (*model.ProjectInvitation, error) {
+	inviteID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	invite, err := r.ProjectService.GetInvitation(inviteID)
+	if err != nil {
+		return nil, fmt.Errorf("invitation not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && (invite.InviteeID == nil || *invite.InviteeID != userID) {
+		return nil, fmt.Errorf("unauthorized: invitation access denied")
+	}
+	updated, err := r.ProjectService.RespondToInvitation(inviteID, accept)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update invitation: %v", err)
+	}
+	return mapProjectInvitation(updated), nil
+}
+
+// RemoveProjectMember is the resolver for the RemoveProjectMember field.
+func (r *mutationResolver) RemoveProjectMember(ctx context.Context, projectID string, memberID string) (bool, error) {
+	parsedProjectID, err := parseUintID(projectID)
+	if err != nil {
+		return false, err
+	}
+	project, err := r.ProjectService.GetProject(parsedProjectID)
+	if err != nil {
+		return false, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !isAdmin(ctx) && !isProjectOwnerOrAdmin(project, userID) {
+		return false, fmt.Errorf("unauthorized: project access denied")
+	}
+	parsedMemberID, err := parseUintID(memberID)
+	if err != nil {
+		return false, err
+	}
+	for _, member := range project.Members {
+		if member.ID == parsedMemberID && member.UserID == project.OwnerID {
+			return false, fmt.Errorf("cannot remove project owner")
+		}
+	}
+	return r.ProjectService.RemoveProjectMember(parsedProjectID, parsedMemberID)
+}
+
+// ResendProjectInvitation is the resolver for the ResendProjectInvitation field.
+func (r *mutationResolver) ResendProjectInvitation(ctx context.Context, id string) (*model.ProjectInvitation, error) {
+	inviteID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	invite, err := r.ProjectService.GetInvitation(inviteID)
+	if err != nil {
+		return nil, fmt.Errorf("invitation not found")
+	}
+	project, err := r.ProjectService.GetProject(invite.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	updated, err := r.ProjectService.ResendInvitation(inviteID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resend invitation: %v", err)
+	}
+	return mapProjectInvitation(updated), nil
+}
+
+// UpdateProjectMemberRole is the resolver for the UpdateProjectMemberRole field.
+func (r *mutationResolver) UpdateProjectMemberRole(ctx context.Context, projectID string, memberID string, role string) (*model.ProjectMember, error) {
+	parsedProjectID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectOwnerOrAdmin(project, userID) {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	parsedMemberID, err := parseUintID(memberID)
+	if err != nil {
+		return nil, err
+	}
+	member, err := r.ProjectService.UpdateMemberRole(parsedProjectID, parsedMemberID, role)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update member role: %v", err)
+	}
+	return mapProjectMember(member), nil
+}
+
+// CreateProjectTask is the resolver for the CreateProjectTask field.
+func (r *mutationResolver) CreateProjectTask(ctx context.Context, input model.ProjectTaskInput) (*model.ProjectTask, error) {
+	projectID, err := parseUintID(input.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	var assigneeID *uint
+	if input.AssigneeID != nil && *input.AssigneeID != "" {
+		parsed, err := parseUintID(*input.AssigneeID)
+		if err != nil {
+			return nil, err
+		}
+		assigneeID = &parsed
+	}
+	dueDate, err := parseOptionalTimeString(input.DueDate)
+	if err != nil {
+		return nil, err
+	}
+	task, err := r.ProjectService.CreateTask(&models.ProjectTask{
+		ProjectID:   projectID,
+		Title:       input.Title,
+		Description: derefString(input.Description),
+		Status:      derefString(input.Status),
+		Priority:    derefString(input.Priority),
+		AssigneeID:  assigneeID,
+		DueDate:     dueDate,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create task: %v", err)
+	}
+	return mapProjectTask(task), nil
+}
+
+// UpdateProjectTask is the resolver for the UpdateProjectTask field.
+func (r *mutationResolver) UpdateProjectTask(ctx context.Context, id string, input model.ProjectTaskUpdateInput) (*model.ProjectTask, error) {
+	taskID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	task, err := r.ProjectService.GetTask(taskID)
+	if err != nil {
+		return nil, fmt.Errorf("task not found")
+	}
+	project, err := r.ProjectService.GetProject(task.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	var assigneeID *uint
+	if input.AssigneeID != nil && *input.AssigneeID != "" {
+		parsed, err := parseUintID(*input.AssigneeID)
+		if err != nil {
+			return nil, err
+		}
+		assigneeID = &parsed
+	}
+	dueDate, err := parseOptionalTimeString(input.DueDate)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := r.ProjectService.UpdateTask(taskID, &models.ProjectTask{
+		Title:       derefString(input.Title),
+		Description: derefString(input.Description),
+		Status:      derefString(input.Status),
+		Priority:    derefString(input.Priority),
+		AssigneeID:  assigneeID,
+		DueDate:     dueDate,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update task: %v", err)
+	}
+	return mapProjectTask(updated), nil
+}
+
+// DeleteProjectTask is the resolver for the DeleteProjectTask field.
+func (r *mutationResolver) DeleteProjectTask(ctx context.Context, id string) (bool, error) {
+	taskID, err := parseUintID(id)
+	if err != nil {
+		return false, err
+	}
+	task, err := r.ProjectService.GetTask(taskID)
+	if err != nil {
+		return false, fmt.Errorf("task not found")
+	}
+	project, err := r.ProjectService.GetProject(task.ProjectID)
+	if err != nil {
+		return false, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return false, fmt.Errorf("unauthorized: project access denied")
+	}
+	return r.ProjectService.DeleteTask(taskID)
+}
+
+// CreateProjectDeliverable is the resolver for the CreateProjectDeliverable field.
+func (r *mutationResolver) CreateProjectDeliverable(ctx context.Context, input model.ProjectDeliverableInput) (*model.ProjectDeliverable, error) {
+	projectID, err := parseUintID(input.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	dueDate, err := parseOptionalTimeString(input.DueDate)
+	if err != nil {
+		return nil, err
+	}
+	deliverable, err := r.ProjectService.CreateDeliverable(&models.ProjectDeliverable{
+		ProjectID:   projectID,
+		Title:       input.Title,
+		Description: derefString(input.Description),
+		Status:      derefString(input.Status),
+		DueDate:     dueDate,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create deliverable: %v", err)
+	}
+	return mapProjectDeliverable(deliverable), nil
+}
+
+// UpdateProjectDeliverable is the resolver for the UpdateProjectDeliverable field.
+func (r *mutationResolver) UpdateProjectDeliverable(ctx context.Context, id string, input model.ProjectDeliverableUpdateInput) (*model.ProjectDeliverable, error) {
+	deliverableID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	deliverable, err := r.ProjectService.GetDeliverable(deliverableID)
+	if err != nil {
+		return nil, fmt.Errorf("deliverable not found")
+	}
+	project, err := r.ProjectService.GetProject(deliverable.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	dueDate, err := parseOptionalTimeString(input.DueDate)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := r.ProjectService.UpdateDeliverable(deliverableID, &models.ProjectDeliverable{
+		Title:       derefString(input.Title),
+		Description: derefString(input.Description),
+		Status:      derefString(input.Status),
+		DueDate:     dueDate,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update deliverable: %v", err)
+	}
+	return mapProjectDeliverable(updated), nil
+}
+
+// DeleteProjectDeliverable is the resolver for the DeleteProjectDeliverable field.
+func (r *mutationResolver) DeleteProjectDeliverable(ctx context.Context, id string) (bool, error) {
+	deliverableID, err := parseUintID(id)
+	if err != nil {
+		return false, err
+	}
+	deliverable, err := r.ProjectService.GetDeliverable(deliverableID)
+	if err != nil {
+		return false, fmt.Errorf("deliverable not found")
+	}
+	project, err := r.ProjectService.GetProject(deliverable.ProjectID)
+	if err != nil {
+		return false, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return false, fmt.Errorf("unauthorized: project access denied")
+	}
+	return r.ProjectService.DeleteDeliverable(deliverableID)
+}
+
+// SubmitProjectDeliverable is the resolver for the SubmitProjectDeliverable field.
+func (r *mutationResolver) SubmitProjectDeliverable(ctx context.Context, input model.ProjectSubmissionInput) (*model.ProjectSubmission, error) {
+	deliverableID, err := parseUintID(input.DeliverableID)
+	if err != nil {
+		return nil, err
+	}
+	deliverable, err := r.ProjectService.GetDeliverable(deliverableID)
+	if err != nil {
+		return nil, fmt.Errorf("deliverable not found")
+	}
+	project, err := r.ProjectService.GetProject(deliverable.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	member, err := r.ProjectService.IsProjectMember(project.ID, userID)
+	if err != nil || (!member && !isAdmin(ctx) && project.OwnerID != userID) {
+		return nil, fmt.Errorf("unauthorized: submission denied")
+	}
+	submission, err := r.ProjectService.CreateSubmission(&models.ProjectSubmission{
+		DeliverableID: deliverableID,
+		ProjectID:     project.ID,
+		SubmitterID:   userID,
+		Content:       derefString(input.Content),
+		FileURL:       derefString(input.FileURL),
+		Status:        "SUBMITTED",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to submit deliverable: %v", err)
+	}
+	return mapProjectSubmission(submission), nil
+}
+
+// ReviewProjectSubmission is the resolver for the ReviewProjectSubmission field.
+func (r *mutationResolver) ReviewProjectSubmission(ctx context.Context, id string, input model.ProjectSubmissionReviewInput) (*model.ProjectSubmission, error) {
+	submissionID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	submission, err := r.ProjectService.GetSubmission(submissionID)
+	if err != nil {
+		return nil, fmt.Errorf("submission not found")
+	}
+	project, err := r.ProjectService.GetProject(submission.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return nil, fmt.Errorf("unauthorized: review denied")
+	}
+	updated, err := r.ProjectService.ReviewSubmission(submissionID, input.Status, derefString(input.Feedback), userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to review submission: %v", err)
+	}
+	return mapProjectSubmission(updated), nil
+}
+
+// UploadFile is the resolver for the UploadFile field.
+func (r *mutationResolver) UploadFile(ctx context.Context, input model.FileUploadInput) (*model.FileAsset, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var projectID *uint
+	if input.ProjectID != nil && *input.ProjectID != "" {
+		parsed, err := parseUintID(*input.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		projectID = &parsed
+	}
+	var chatID *string
+	if input.ChatID != nil && *input.ChatID != "" {
+		chatID = input.ChatID
+	}
+	fileURL, err := utils.UploadToCloudinary(input.File, "uploads")
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file: %v", err)
+	}
+	file := &models.FileAsset{
+		OwnerID:   userID,
+		ProjectID: projectID,
+		ChatID:    chatID,
+		Context:   derefString(input.Context),
+		FileName:  input.File.Filename,
+		FileURL:   fileURL,
+		FileType:  input.File.ContentType,
+		FileSize:  input.File.Size,
+	}
+	created, err := r.CommunicationService.CreateFile(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save file: %v", err)
+	}
+	return mapFileAsset(created), nil
+}
+
+// CreateVideoSession is the resolver for the CreateVideoSession field.
+func (r *mutationResolver) CreateVideoSession(ctx context.Context, input model.VideoSessionInput) (*model.VideoSession, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var projectID *uint
+	if input.ProjectID != nil && *input.ProjectID != "" {
+		parsed, err := parseUintID(*input.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		projectID = &parsed
+	}
+	var chatID *string
+	if input.ChatID != nil && *input.ChatID != "" {
+		chatID = input.ChatID
+	}
+	scheduledAt, err := parseTimeString(input.ScheduledAt)
+	if err != nil {
+		return nil, err
+	}
+	session, err := r.CommunicationService.CreateVideoSession(&models.VideoSession{
+		ProjectID:   projectID,
+		ChatID:      chatID,
+		HostID:      userID,
+		Title:       input.Title,
+		MeetingURL:  derefString(input.MeetingURL),
+		ScheduledAt: scheduledAt,
+		Status:      "SCHEDULED",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session: %v", err)
+	}
+	return mapVideoSession(session), nil
+}
+
+// UpdateVideoSessionStatus is the resolver for the UpdateVideoSessionStatus field.
+func (r *mutationResolver) UpdateVideoSessionStatus(ctx context.Context, id string, input model.VideoSessionStatusInput) (*model.VideoSession, error) {
+	sessionID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	session, err := r.CommunicationService.UpdateVideoSessionStatus(sessionID, input.Status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update session: %v", err)
+	}
+	return mapVideoSession(session), nil
+}
+
+// AddVideoRecording is the resolver for the AddVideoRecording field.
+func (r *mutationResolver) AddVideoRecording(ctx context.Context, id string, recordingURL string) (*model.VideoSession, error) {
+	sessionID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	session, err := r.CommunicationService.AddVideoRecording(sessionID, recordingURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add recording: %v", err)
+	}
+	return mapVideoSession(session), nil
+}
+
+// InviteToVideoSession is the resolver for the InviteToVideoSession field.
+func (r *mutationResolver) InviteToVideoSession(ctx context.Context, input model.VideoSessionInviteInput) (*model.VideoSessionInvite, error) {
+	sessionID, err := parseUintID(input.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var inviteeID *uint
+	if input.InviteeID != nil && *input.InviteeID != "" {
+		parsed, err := parseUintID(*input.InviteeID)
+		if err != nil {
+			return nil, err
+		}
+		inviteeID = &parsed
+	}
+	inviteeEmail := derefString(input.InviteeEmail)
+	if inviteeID == nil && inviteeEmail != "" {
+		if user, err := r.UserService.FindByEmail(inviteeEmail); err == nil {
+			id := user.ID
+			inviteeID = &id
+		}
+	}
+	invite, err := r.CommunicationService.InviteToVideoSession(sessionID, userID, inviteeID, inviteeEmail, derefString(input.Message))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create invite: %v", err)
+	}
+	return mapVideoSessionInvite(invite), nil
+}
+
+// RespondToVideoSessionInvite is the resolver for the RespondToVideoSessionInvite field.
+func (r *mutationResolver) RespondToVideoSessionInvite(ctx context.Context, id string, accept bool) (*model.VideoSessionInvite, error) {
+	inviteID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	invite, err := r.CommunicationService.RespondToVideoInvite(inviteID, accept)
+	if err != nil {
+		return nil, fmt.Errorf("failed to respond to invite: %v", err)
+	}
+	if invite.InviteeID != nil && *invite.InviteeID != userID && !isAdmin(ctx) {
+		return nil, fmt.Errorf("unauthorized: invite access denied")
+	}
+	return mapVideoSessionInvite(invite), nil
+}
+
+// UpsertOrganization is the resolver for the UpsertOrganization field.
+func (r *mutationResolver) UpsertOrganization(ctx context.Context, input model.OrganizationInput) (*model.Organization, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.UpsertOrganization(userID, &models.Organization{
+		Name:        input.Name,
+		Industry:    derefString(input.Industry),
+		Size:        derefString(input.Size),
+		Website:     derefString(input.Website),
+		Description: derefString(input.Description),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert organization: %v", err)
+	}
+	return mapOrganization(org), nil
+}
+
+// UpdateOrganization is the resolver for the UpdateOrganization field.
+func (r *mutationResolver) UpdateOrganization(ctx context.Context, input model.OrganizationUpdateInput) (*model.Organization, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.UpsertOrganization(userID, &models.Organization{
+		Name:        derefString(input.Name),
+		Industry:    derefString(input.Industry),
+		Size:        derefString(input.Size),
+		Website:     derefString(input.Website),
+		Description: derefString(input.Description),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update organization: %v", err)
+	}
+	return mapOrganization(org), nil
+}
+
+// InviteOrganizationMember is the resolver for the InviteOrganizationMember field.
+func (r *mutationResolver) InviteOrganizationMember(ctx context.Context, input model.OrganizationInviteInput) (*model.OrganizationInvite, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	var inviteeID *uint
+	if input.InviteeID != nil && *input.InviteeID != "" {
+		parsed, err := parseUintID(*input.InviteeID)
+		if err != nil {
+			return nil, err
+		}
+		inviteeID = &parsed
+	}
+	inviteeEmail := derefString(input.InviteeEmail)
+	invite, err := r.OrganizationService.InviteMember(org.ID, userID, inviteeID, inviteeEmail, derefString(input.Message))
+	if err != nil {
+		return nil, fmt.Errorf("failed to invite member: %v", err)
+	}
+	return mapOrganizationInvite(invite), nil
+}
+
+// RespondToOrganizationInvite is the resolver for the RespondToOrganizationInvite field.
+func (r *mutationResolver) RespondToOrganizationInvite(ctx context.Context, id string, accept bool) (*model.OrganizationInvite, error) {
+	inviteID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	invite, err := r.OrganizationService.RespondToInvite(inviteID, accept)
+	if err != nil {
+		return nil, fmt.Errorf("failed to respond to invite: %v", err)
+	}
+	return mapOrganizationInvite(invite), nil
+}
+
+// RemoveOrganizationMember is the resolver for the RemoveOrganizationMember field.
+func (r *mutationResolver) RemoveOrganizationMember(ctx context.Context, memberID string) (bool, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return false, fmt.Errorf("organization not found")
+	}
+	parsedID, err := parseUintID(memberID)
+	if err != nil {
+		return false, err
+	}
+	return r.OrganizationService.RemoveMember(org.ID, parsedID)
+}
+
+// UpdateOrganizationMemberRole is the resolver for the UpdateOrganizationMemberRole field.
+func (r *mutationResolver) UpdateOrganizationMemberRole(ctx context.Context, memberID string, role string) (*model.OrganizationMember, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	parsedID, err := parseUintID(memberID)
+	if err != nil {
+		return nil, err
+	}
+	member, err := r.OrganizationService.UpdateMemberRole(org.ID, parsedID, role)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update role: %v", err)
+	}
+	return mapOrganizationMember(member), nil
+}
+
+// UpdateBillingSubscription is the resolver for the UpdateBillingSubscription field.
+func (r *mutationResolver) UpdateBillingSubscription(ctx context.Context, input model.BillingSubscriptionInput) (*model.BillingSubscription, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	var renewsAt *time.Time
+	if input.RenewsAt != nil {
+		parsed, err := parseTimeString(*input.RenewsAt)
+		if err != nil {
+			return nil, err
+		}
+		renewsAt = &parsed
+	}
+	sub, err := r.OrganizationService.UpsertSubscription(org.ID, &models.BillingSubscription{
+		Plan:     derefString(input.Plan),
+		Status:   derefString(input.Status),
+		RenewsAt: renewsAt,
+		Seats:    int(derefInt32(input.Seats)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update subscription: %v", err)
+	}
+	return mapBillingSubscription(sub), nil
+}
+
+// AddBillingPaymentMethod is the resolver for the AddBillingPaymentMethod field.
+func (r *mutationResolver) AddBillingPaymentMethod(ctx context.Context, input model.BillingPaymentMethodInput) (*model.BillingPaymentMethod, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	method, err := r.OrganizationService.AddPaymentMethod(org.ID, &models.BillingPaymentMethod{
+		Type:      input.Type,
+		Last4:     derefString(input.Last4),
+		Brand:     derefString(input.Brand),
+		ExpiryMonth: int(derefInt32(input.ExpiryMonth)),
+		ExpiryYear:  int(derefInt32(input.ExpiryYear)),
+		IsDefault: derefBool(input.IsDefault),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to add payment method: %v", err)
+	}
+	return mapBillingPaymentMethod(method), nil
+}
+
+// SetDefaultBillingPaymentMethod is the resolver for the SetDefaultBillingPaymentMethod field.
+func (r *mutationResolver) SetDefaultBillingPaymentMethod(ctx context.Context, id string) (*model.BillingPaymentMethod, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	methodID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	method, err := r.OrganizationService.SetDefaultPaymentMethod(org.ID, methodID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update payment method: %v", err)
+	}
+	return mapBillingPaymentMethod(method), nil
+}
+
+// DeleteBillingPaymentMethod is the resolver for the DeleteBillingPaymentMethod field.
+func (r *mutationResolver) DeleteBillingPaymentMethod(ctx context.Context, id string) (bool, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return false, fmt.Errorf("organization not found")
+	}
+	methodID, err := parseUintID(id)
+	if err != nil {
+		return false, err
+	}
+	return r.OrganizationService.DeletePaymentMethod(org.ID, methodID)
+}
+
+// CreateMockInvoice is the resolver for the CreateMockInvoice field.
+func (r *mutationResolver) CreateMockInvoice(ctx context.Context, input model.BillingInvoiceMockInput) (*model.BillingInvoice, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	invoice, err := r.OrganizationService.CreateMockInvoice(org.ID, int64(input.AmountCents), derefString(input.Currency))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create invoice: %v", err)
+	}
+	return mapBillingInvoice(invoice), nil
+}
+
+// UpdateInvoiceStatus is the resolver for the UpdateInvoiceStatus field.
+func (r *mutationResolver) UpdateInvoiceStatus(ctx context.Context, id string, input model.BillingInvoiceStatusInput) (*model.BillingInvoice, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := r.OrganizationService.GetByOwner(userID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found")
+	}
+	invoiceID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	invoice, err := r.OrganizationService.UpdateInvoiceStatus(org.ID, invoiceID, input.Status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update invoice: %v", err)
+	}
+	return mapBillingInvoice(invoice), nil
+}
+
+// CreateProjectChat is the resolver for the CreateProjectChat field.
+func (r *mutationResolver) CreateProjectChat(ctx context.Context, projectID string, participantID string) (*model.ProjectChat, error) {
+	parsedProjectID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && !isProjectEditor(project, userID, r.ProjectService) {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	parsedParticipantID, err := parseUintID(participantID)
+	if err != nil {
+		return nil, err
+	}
+	chat, err := r.ChatService.Create(userID, parsedParticipantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chat: %v", err)
+	}
+	link, err := r.ProjectService.CreateProjectChat(parsedProjectID, chat.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to link project chat: %v", err)
+	}
+	return mapProjectChat(link), nil
+}
+
+// UpdateFileTags is the resolver for the UpdateFileTags field.
+func (r *mutationResolver) UpdateFileTags(ctx context.Context, id string, input model.FileTagsInput) (*model.FileAsset, error) {
+	fileID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	file, err := r.CommunicationService.GetFile(fileID)
+	if err != nil {
+		return nil, fmt.Errorf("file not found")
+	}
+	if !isAdmin(ctx) && file.OwnerID != userID {
+		if file.ProjectID != nil {
+			member, err := r.ProjectService.IsProjectMember(*file.ProjectID, userID)
+			if err != nil || !member {
+				return nil, fmt.Errorf("unauthorized: file access denied")
+			}
+		} else {
+			return nil, fmt.Errorf("unauthorized: file access denied")
+		}
+	}
+	file, err = r.CommunicationService.UpdateFileTags(fileID, input.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update tags: %v", err)
+	}
+	return mapFileAsset(file), nil
+}
+
+// DeleteFile is the resolver for the DeleteFile field.
+func (r *mutationResolver) DeleteFile(ctx context.Context, id string) (bool, error) {
+	fileID, err := parseUintID(id)
+	if err != nil {
+		return false, err
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	file, err := r.CommunicationService.GetFile(fileID)
+	if err != nil {
+		return false, fmt.Errorf("file not found")
+	}
+	if !isAdmin(ctx) && file.OwnerID != userID {
+		if file.ProjectID != nil {
+			member, err := r.ProjectService.IsProjectMember(*file.ProjectID, userID)
+			if err != nil || !member {
+				return false, fmt.Errorf("unauthorized: file access denied")
+			}
+		} else {
+			return false, fmt.Errorf("unauthorized: file access denied")
+		}
+	}
+	return r.CommunicationService.DeleteFile(fileID)
+}
+
+// UpsertFeatureFlag is the resolver for the UpsertFeatureFlag field.
+func (r *mutationResolver) UpsertFeatureFlag(ctx context.Context, input model.FeatureFlagInput) (*model.FeatureFlag, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	flag, err := r.AdminService.UpsertFeatureFlag(&models.FeatureFlag{
+		Key:         input.Key,
+		Enabled:     input.Enabled,
+		Description: derefString(input.Description),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert feature flag: %v", err)
+	}
+	return mapFeatureFlag(flag), nil
+}
+
+// DeleteFeatureFlag is the resolver for the DeleteFeatureFlag field.
+func (r *mutationResolver) DeleteFeatureFlag(ctx context.Context, id string) (bool, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	parsed, err := parseUintID(id)
+	if err != nil {
+		return false, err
+	}
+	return r.AdminService.DeleteFeatureFlag(parsed)
+}
+
+// UpsertSkillCategory is the resolver for the UpsertSkillCategory field.
+func (r *mutationResolver) UpsertSkillCategory(ctx context.Context, input model.SkillCategoryInput) (*model.SkillCategory, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	cat, err := r.AdminService.UpsertSkillCategory(&models.SkillCategory{
+		Name:        input.Name,
+		Description: derefString(input.Description),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert category: %v", err)
+	}
+	return mapSkillCategory(cat), nil
+}
+
+// DeleteSkillCategory is the resolver for the DeleteSkillCategory field.
+func (r *mutationResolver) DeleteSkillCategory(ctx context.Context, id string) (bool, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	parsed, err := parseUintID(id)
+	if err != nil {
+		return false, err
+	}
+	return r.AdminService.DeleteSkillCategory(parsed)
+}
+
+// UpsertCompliancePolicy is the resolver for the UpsertCompliancePolicy field.
+func (r *mutationResolver) UpsertCompliancePolicy(ctx context.Context, input model.CompliancePolicyInput) (*model.CompliancePolicy, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	policy, err := r.AdminService.UpsertCompliancePolicy(&models.CompliancePolicy{
+		Title:   input.Title,
+		Content: input.Content,
+		Status:  derefString(input.Status),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert policy: %v", err)
+	}
+	adminID, _ := utils.GetUserIDFromContext(ctx)
+	_, _ = r.AdminService.CreateComplianceLog(&models.ComplianceLog{
+		ActorID: &adminID,
+		Action:  "COMPLIANCE_POLICY_UPSERTED",
+		Details: policy.Title,
+	})
+	return mapCompliancePolicy(policy), nil
+}
+
+// UpdateCompliancePolicy is the resolver for the UpdateCompliancePolicy field.
+func (r *mutationResolver) UpdateCompliancePolicy(ctx context.Context, input model.CompliancePolicyUpdateInput) (*model.CompliancePolicy, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	policyID, err := parseUintID(input.ID)
+	if err != nil {
+		return nil, err
+	}
+	policy, err := r.AdminService.UpsertCompliancePolicy(&models.CompliancePolicy{
+		ID:      policyID,
+		Title:   derefString(input.Title),
+		Content: derefString(input.Content),
+		Status:  derefString(input.Status),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update policy: %v", err)
+	}
+	adminID, _ := utils.GetUserIDFromContext(ctx)
+	_, _ = r.AdminService.CreateComplianceLog(&models.ComplianceLog{
+		ActorID: &adminID,
+		Action:  "COMPLIANCE_POLICY_UPDATED",
+		Details: policy.Title,
+	})
+	return mapCompliancePolicy(policy), nil
+}
+
+// DeleteCompliancePolicy is the resolver for the DeleteCompliancePolicy field.
+func (r *mutationResolver) DeleteCompliancePolicy(ctx context.Context, id string) (bool, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return false, err
+	}
+	parsed, err := parseUintID(id)
+	if err != nil {
+		return false, err
+	}
+	ok, err := r.AdminService.DeleteCompliancePolicy(parsed)
+	if err == nil {
+		adminID, _ := utils.GetUserIDFromContext(ctx)
+		_, _ = r.AdminService.CreateComplianceLog(&models.ComplianceLog{
+			ActorID: &adminID,
+			Action:  "COMPLIANCE_POLICY_DELETED",
+			Details: id,
+		})
+	}
+	return ok, err
+}
+
+// SetProjectPublic is the resolver for the SetProjectPublic field.
+func (r *mutationResolver) SetProjectPublic(ctx context.Context, id string, isPublic bool) (*model.Project, error) {
+	projectID, err := parseUintID(id)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		return nil, fmt.Errorf("unauthorized: project access denied")
+	}
+	updated, err := r.ProjectService.UpdateProject(projectID, &models.Project{
+		IsPublic: isPublic,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update project visibility: %v", err)
+	}
+	return mapProject(updated), nil
+}
+
+// SetTalentPublic is the resolver for the SetTalentPublic field.
+func (r *mutationResolver) SetTalentPublic(ctx context.Context, isPublic bool) (*model.TalentProfile, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	profile, err := r.ProfileService.SetPublic(userID, isPublic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update visibility: %v", err)
+	}
+	return mapTalentProfile(profile), nil
+}
+
+// IncrementProjectView is the resolver for the IncrementProjectView field.
+func (r *mutationResolver) IncrementProjectView(ctx context.Context, projectID string) (*model.Project, error) {
+	parsedID, err := parseUintID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := r.ProjectService.GetProject(parsedID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isAdmin(ctx) && project.OwnerID != userID {
+		member, err := r.ProjectService.IsProjectMember(parsedID, userID)
+		if err != nil || !member {
+			return nil, fmt.Errorf("unauthorized: project access denied")
+		}
+	}
+	if err := r.ProjectService.IncrementProjectView(parsedID); err != nil {
+		return nil, fmt.Errorf("failed to increment view: %v", err)
+	}
+	project, _ = r.ProjectService.GetProject(parsedID)
+	return mapProject(project), nil
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func derefBool(value *bool) bool {
+	if value == nil {
+		return false
+	}
+	return *value
+}
+
+func derefSenderProvider(value *model.SenderProvider) model.SenderProvider {
+	if value == nil {
+		return model.SenderProviderSMTP
+	}
+	return *value
+}
+
+func requireAdmin(ctx context.Context) error {
+	role, err := utils.GetRoleFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	if role != "admin" {
+		return fmt.Errorf("unauthorized: administrative permissions required")
+	}
+	return nil
+}
+
+func isAdmin(ctx context.Context) bool {
+	role, err := utils.GetRoleFromContext(ctx)
+	if err != nil {
+		return false
+	}
+	return role == "admin"
+}
+
+func derefNewsletterStatus(value *model.NewsletterStatus) model.NewsletterStatus {
+	if value == nil {
+		return model.NewsletterStatusDraft
+	}
+	return *value
+}
+
+func derefInt(value *int32) int {
+	if value == nil {
+		return 0
+	}
+	return int(*value)
+}
+
+func derefTime(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
+}
+
+func parseTimeString(value string) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date format: expected RFC3339")
+	}
+	return parsed, nil
+}
+
+func parseOptionalTimeString(value *string) (*time.Time, error) {
+	if value == nil || *value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, *value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid date format: expected RFC3339")
+	}
+	return &parsed, nil
+}
+
+func (r *mutationResolver) resolveProfileID(ctx context.Context, profileID *string) (uint, error) {
+	if profileID == nil || *profileID == "" {
+		userID, err := utils.GetUserIDFromContext(ctx)
+		if err != nil {
+			return 0, err
+		}
+		profile, err := r.ProfileService.GetByUserID(userID)
+		if err != nil {
+			return 0, fmt.Errorf("profile not found")
+		}
+		return profile.ID, nil
+	}
+	// admin can target any profile by id
+	if err := requireAdmin(ctx); err != nil {
+		return 0, err
+	}
+	parsed, err := strconv.ParseUint(*profileID, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid profile id")
+	}
+	return uint(parsed), nil
+}
+
+func mapTalentProfile(p *models.TalentProfile) *model.TalentProfile {
+	var skills []*model.Skill
+	for _, s := range p.Skills {
+		skills = append(skills, mapSkill(&s))
+	}
+	var exps []*model.Experience
+	for _, e := range p.Experiences {
+		exps = append(exps, mapExperience(&e))
+	}
+	var works []*model.WorkSample
+	for _, w := range p.WorkSamples {
+		works = append(works, mapWorkSample(&w))
+	}
+	return &model.TalentProfile{
+		ID:                fmt.Sprintf("%d", p.ID),
+		UserID:            fmt.Sprintf("%d", p.UserID),
+		ProfessionalTitle: &p.ProfessionalTitle,
+		Bio:               &p.Bio,
+		Location:          &p.Location,
+		ProfileImageURL:   &p.ProfileImageURL,
+		IsPublic:          p.IsPublic,
+		ViewCount:         int32(p.ViewCount),
+		CompletionPercent: int32(p.CompletionPercent),
+		Skills:            skills,
+		Experiences:       exps,
+		WorkSamples:       works,
+	}
+}
+
+func mapSkill(s *models.Skill) *model.Skill {
+	return &model.Skill{
+		ID:               fmt.Sprintf("%d", s.ID),
+		ProfileID:        fmt.Sprintf("%d", s.ProfileID),
+		SkillName:        s.SkillName,
+		ProficiencyLevel: &s.ProficiencyLevel,
+		Category:         &s.Category,
+	}
+}
+
+func mapExperience(e *models.Experience) *model.Experience {
+	var end *string
+	if e.EndDate != nil {
+		formatted := e.EndDate.Format(time.RFC3339)
+		end = &formatted
+	}
+	start := e.StartDate.Format(time.RFC3339)
+	return &model.Experience{
+		ID:          fmt.Sprintf("%d", e.ID),
+		ProfileID:   fmt.Sprintf("%d", e.ProfileID),
+		JobTitle:    e.JobTitle,
+		CompanyName: e.CompanyName,
+		StartDate:   start,
+		EndDate:     end,
+		Description: &e.Description,
+		IsCurrent:   e.IsCurrent,
+	}
+}
+
+func mapWorkSample(w *models.WorkSample) *model.WorkSample {
+	return &model.WorkSample{
+		ID:          fmt.Sprintf("%d", w.ID),
+		ProfileID:   fmt.Sprintf("%d", w.ProfileID),
+		Title:       &w.Title,
+		Description: &w.Description,
+		ImageURL:    w.ImageURL,
+		ExternalLink: &w.ExternalLink,
+		DisplayOrder: int32(w.DisplayOrder),
+	}
+}
+
+func mapUserFromModel(u *models.User) *model.User {
+	if u == nil {
+		return nil
+	}
+	return &model.User{
+		ID:               fmt.Sprintf("%d", u.ID),
+		FirstName:        u.FirstName,
+		LastName:         u.LastName,
+		Email:            u.Email,
+		PhoneNumber:      u.PhoneNumber,
+		Address:          u.Address,
+		Role:             u.Role,
+		Cv:               &u.CV,
+		IsActive:         u.IsActive,
+		IsVerified:       u.IsVerified,
+		TwoFactorEnabled: u.TwoFactorEnabled,
+		ThemePreference:  &u.ThemePreference,
+	}
+}
+
+func mapProject(p *models.Project) *model.Project {
+	var members []*model.ProjectMember
+	for _, m := range p.Members {
+		members = append(members, mapProjectMember(&m))
+	}
+	var invites []*model.ProjectInvitation
+	for _, inv := range p.Invitations {
+		invites = append(invites, mapProjectInvitation(&inv))
+	}
+	return &model.Project{
+		ID:          fmt.Sprintf("%d", p.ID),
+		OwnerID:     fmt.Sprintf("%d", p.OwnerID),
+		Owner:       mapUserFromModel(&p.Owner),
+		Title:       p.Title,
+		Description: &p.Description,
+		Status:      p.Status,
+		IsPublic:    p.IsPublic,
+		CoverImage:  stringPtr(p.CoverImage),
+		Summary:     stringPtr(p.Summary),
+		ViewCount:   int32(p.ViewCount),
+		CreatedAt:   p.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   p.UpdatedAt.Format(time.RFC3339),
+		Members:     members,
+		Invitations: invites,
+	}
+}
+
+func mapProjectMember(m *models.ProjectMember) *model.ProjectMember {
+	return &model.ProjectMember{
+		ID:        fmt.Sprintf("%d", m.ID),
+		ProjectID: fmt.Sprintf("%d", m.ProjectID),
+		UserID:    fmt.Sprintf("%d", m.UserID),
+		Role:      m.Role,
+		JoinedAt:  m.JoinedAt.Format(time.RFC3339),
+		User:      mapUserFromModel(&m.User),
+	}
+}
+
+func mapProjectInvitation(i *models.ProjectInvitation) *model.ProjectInvitation {
+	var inviteeID *string
+	if i.InviteeID != nil {
+		formatted := fmt.Sprintf("%d", *i.InviteeID)
+		inviteeID = &formatted
+	}
+	var respondedAt *string
+	if i.RespondedAt != nil {
+		formatted := i.RespondedAt.Format(time.RFC3339)
+		respondedAt = &formatted
+	}
+	var expiresAt *string
+	if i.ExpiresAt != nil {
+		formatted := i.ExpiresAt.Format(time.RFC3339)
+		expiresAt = &formatted
+	}
+	return &model.ProjectInvitation{
+		ID:           fmt.Sprintf("%d", i.ID),
+		ProjectID:    fmt.Sprintf("%d", i.ProjectID),
+		InviterID:    fmt.Sprintf("%d", i.InviterID),
+		InviteeID:    inviteeID,
+		InviteeEmail: &i.InviteeEmail,
+		Role:         i.Role,
+		Status:       i.Status,
+		Message:      &i.Message,
+		CreatedAt:    i.CreatedAt.Format(time.RFC3339),
+		ExpiresAt:    expiresAt,
+		ResendCount:  int32(i.ResendCount),
+		RespondedAt:  respondedAt,
+	}
+}
+
+func mapProjectActivity(a *models.ProjectActivity) *model.ProjectActivity {
+	var actorID *string
+	if a.ActorID != nil {
+		formatted := fmt.Sprintf("%d", *a.ActorID)
+		actorID = &formatted
+	}
+	return &model.ProjectActivity{
+		ID:        fmt.Sprintf("%d", a.ID),
+		ProjectID: fmt.Sprintf("%d", a.ProjectID),
+		ActorID:   actorID,
+		Action:    a.Action,
+		Details:   &a.Details,
+		CreatedAt: a.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapProjectTask(task *models.ProjectTask) *model.ProjectTask {
+	var assigneeID *string
+	if task.AssigneeID != nil {
+		formatted := fmt.Sprintf("%d", *task.AssigneeID)
+		assigneeID = &formatted
+	}
+	var dueDate *string
+	if task.DueDate != nil {
+		formatted := task.DueDate.Format(time.RFC3339)
+		dueDate = &formatted
+	}
+	return &model.ProjectTask{
+		ID:          fmt.Sprintf("%d", task.ID),
+		ProjectID:   fmt.Sprintf("%d", task.ProjectID),
+		Title:       task.Title,
+		Description: &task.Description,
+		Status:      task.Status,
+		Priority:    task.Priority,
+		AssigneeID:  assigneeID,
+		DueDate:     dueDate,
+		CreatedAt:   task.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   task.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapProjectDeliverable(deliverable *models.ProjectDeliverable) *model.ProjectDeliverable {
+	var dueDate *string
+	if deliverable.DueDate != nil {
+		formatted := deliverable.DueDate.Format(time.RFC3339)
+		dueDate = &formatted
+	}
+	return &model.ProjectDeliverable{
+		ID:          fmt.Sprintf("%d", deliverable.ID),
+		ProjectID:   fmt.Sprintf("%d", deliverable.ProjectID),
+		Title:       deliverable.Title,
+		Description: &deliverable.Description,
+		Status:      deliverable.Status,
+		DueDate:     dueDate,
+		CreatedAt:   deliverable.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   deliverable.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapProjectSubmission(submission *models.ProjectSubmission) *model.ProjectSubmission {
+	var reviewedBy *string
+	if submission.ReviewedBy != nil {
+		formatted := fmt.Sprintf("%d", *submission.ReviewedBy)
+		reviewedBy = &formatted
+	}
+	var reviewedAt *string
+	if submission.ReviewedAt != nil {
+		formatted := submission.ReviewedAt.Format(time.RFC3339)
+		reviewedAt = &formatted
+	}
+	return &model.ProjectSubmission{
+		ID:           fmt.Sprintf("%d", submission.ID),
+		ProjectID:    fmt.Sprintf("%d", submission.ProjectID),
+		DeliverableID: fmt.Sprintf("%d", submission.DeliverableID),
+		SubmitterID:  fmt.Sprintf("%d", submission.SubmitterID),
+		Content:      &submission.Content,
+		FileURL:      &submission.FileURL,
+		Status:       submission.Status,
+		ReviewedBy:   reviewedBy,
+		ReviewedAt:   reviewedAt,
+		Feedback:     &submission.Feedback,
+		CreatedAt:    submission.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapProjectChat(chat *models.ProjectChat) *model.ProjectChat {
+	return &model.ProjectChat{
+		ID:        fmt.Sprintf("%d", chat.ID),
+		ProjectID: fmt.Sprintf("%d", chat.ProjectID),
+		ChatID:    chat.ChatID,
+		CreatedAt: chat.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapFileAsset(file *models.FileAsset) *model.FileAsset {
+	var projectID *string
+	if file.ProjectID != nil {
+		formatted := fmt.Sprintf("%d", *file.ProjectID)
+		projectID = &formatted
+	}
+	var chatID *string
+	if file.ChatID != nil {
+		chatID = file.ChatID
+	}
+	return &model.FileAsset{
+		ID:        fmt.Sprintf("%d", file.ID),
+		OwnerID:   fmt.Sprintf("%d", file.OwnerID),
+		ProjectID: projectID,
+		ChatID:    chatID,
+		Context:   file.Context,
+		FileName:  file.FileName,
+		FileURL:   file.FileURL,
+		FileType:  &file.FileType,
+		FileSize:  int32(file.FileSize),
+		Tags:      stringPtr(file.Tags),
+		CreatedAt: file.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapVideoSession(session *models.VideoSession) *model.VideoSession {
+	var projectID *string
+	if session.ProjectID != nil {
+		formatted := fmt.Sprintf("%d", *session.ProjectID)
+		projectID = &formatted
+	}
+	var chatID *string
+	if session.ChatID != nil {
+		chatID = session.ChatID
+	}
+	var startedAt *string
+	if session.StartedAt != nil {
+		formatted := session.StartedAt.Format(time.RFC3339)
+		startedAt = &formatted
+	}
+	var endedAt *string
+	if session.EndedAt != nil {
+		formatted := session.EndedAt.Format(time.RFC3339)
+		endedAt = &formatted
+	}
+	return &model.VideoSession{
+		ID:          fmt.Sprintf("%d", session.ID),
+		ProjectID:   projectID,
+		ChatID:      chatID,
+		HostID:      fmt.Sprintf("%d", session.HostID),
+		Title:       session.Title,
+		MeetingURL:  stringPtr(session.MeetingURL),
+		Status:      session.Status,
+		ScheduledAt: session.ScheduledAt.Format(time.RFC3339),
+		StartedAt:   startedAt,
+		EndedAt:     endedAt,
+		RecordingURL: stringPtr(session.RecordingURL),
+		CreatedAt:   session.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapApplicant(applicant *models.JobApplicant) *model.Applicants {
+	if applicant == nil {
+		return nil
+	}
+	return &model.Applicants{
+		UserID:    strconv.Itoa(int(applicant.UserID)),
+		JobID:     int32(applicant.JobOfferID),
+		AppliedAt: applicant.AppliedAt.Format(time.RFC3339),
+		Status:    applicant.Status,
+		Resume:    applicant.Resume,
+		Proposal:  &applicant.Proposal,
+	}
+}
+
+func mapApplicationNote(note *models.JobApplicationNote) *model.ApplicationNote {
+	return &model.ApplicationNote{
+		ID:        fmt.Sprintf("%d", note.ID),
+		JobID:     fmt.Sprintf("%d", note.JobOfferID),
+		UserID:    fmt.Sprintf("%d", note.UserID),
+		AuthorID:  fmt.Sprintf("%d", note.AuthorID),
+		Note:      note.Note,
+		CreatedAt: note.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapApplicationEvent(event *models.JobApplicationEvent) *model.ApplicationEvent {
+	var actorID *string
+	if event.ActorID != nil {
+		formatted := fmt.Sprintf("%d", *event.ActorID)
+		actorID = &formatted
+	}
+	return &model.ApplicationEvent{
+		ID:        fmt.Sprintf("%d", event.ID),
+		JobID:     fmt.Sprintf("%d", event.JobOfferID),
+		UserID:    fmt.Sprintf("%d", event.UserID),
+		ActorID:   actorID,
+		Action:    event.Action,
+		Details:   &event.Details,
+		CreatedAt: event.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func stringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func int32Ptr(value int) *int32 {
+	if value == 0 {
+		return nil
+	}
+	v := int32(value)
+	return &v
+}
+
+func derefInt32(value *int32) int32 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func mapVideoSessionParticipant(participant *models.VideoSessionParticipant) *model.VideoSessionParticipant {
+	var joinedAt *string
+	if participant.JoinedAt != nil {
+		formatted := participant.JoinedAt.Format(time.RFC3339)
+		joinedAt = &formatted
+	}
+	return &model.VideoSessionParticipant{
+		ID:        fmt.Sprintf("%d", participant.ID),
+		SessionID: fmt.Sprintf("%d", participant.SessionID),
+		UserID:    fmt.Sprintf("%d", participant.UserID),
+		Role:      participant.Role,
+		Status:    participant.Status,
+		JoinedAt:  joinedAt,
+	}
+}
+
+func mapVideoSessionInvite(invite *models.VideoSessionInvite) *model.VideoSessionInvite {
+	var inviteeID *string
+	if invite.InviteeID != nil {
+		formatted := fmt.Sprintf("%d", *invite.InviteeID)
+		inviteeID = &formatted
+	}
+	var respondedAt *string
+	if invite.RespondedAt != nil {
+		formatted := invite.RespondedAt.Format(time.RFC3339)
+		respondedAt = &formatted
+	}
+	return &model.VideoSessionInvite{
+		ID:           fmt.Sprintf("%d", invite.ID),
+		SessionID:    fmt.Sprintf("%d", invite.SessionID),
+		InviterID:    fmt.Sprintf("%d", invite.InviterID),
+		InviteeID:    inviteeID,
+		InviteeEmail: &invite.InviteeEmail,
+		Status:       invite.Status,
+		Message:      &invite.Message,
+		CreatedAt:    invite.CreatedAt.Format(time.RFC3339),
+		RespondedAt:  respondedAt,
+	}
+}
+
+func mapOrganization(org *models.Organization) *model.Organization {
+	return &model.Organization{
+		ID:          fmt.Sprintf("%d", org.ID),
+		OwnerID:     fmt.Sprintf("%d", org.OwnerID),
+		Name:        org.Name,
+		Industry:    &org.Industry,
+		Size:        &org.Size,
+		Website:     &org.Website,
+		Description: &org.Description,
+		CreatedAt:   org.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   org.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapOrganizationMember(member *models.OrganizationMember) *model.OrganizationMember {
+	return &model.OrganizationMember{
+		ID:             fmt.Sprintf("%d", member.ID),
+		OrganizationID: fmt.Sprintf("%d", member.OrganizationID),
+		UserID:         fmt.Sprintf("%d", member.UserID),
+		Role:           member.Role,
+		JoinedAt:       member.JoinedAt.Format(time.RFC3339),
+	}
+}
+
+func mapOrganizationInvite(invite *models.OrganizationInvite) *model.OrganizationInvite {
+	var inviteeID *string
+	if invite.InviteeID != nil {
+		formatted := fmt.Sprintf("%d", *invite.InviteeID)
+		inviteeID = &formatted
+	}
+	var respondedAt *string
+	if invite.RespondedAt != nil {
+		formatted := invite.RespondedAt.Format(time.RFC3339)
+		respondedAt = &formatted
+	}
+	return &model.OrganizationInvite{
+		ID:             fmt.Sprintf("%d", invite.ID),
+		OrganizationID: fmt.Sprintf("%d", invite.OrganizationID),
+		InviterID:      fmt.Sprintf("%d", invite.InviterID),
+		InviteeID:      inviteeID,
+		InviteeEmail:   &invite.InviteeEmail,
+		Status:         invite.Status,
+		Message:        &invite.Message,
+		CreatedAt:      invite.CreatedAt.Format(time.RFC3339),
+		RespondedAt:    respondedAt,
+	}
+}
+
+func mapOrganizationActivity(activity *models.OrganizationActivity) *model.OrganizationActivity {
+	var actorID *string
+	if activity.ActorID != nil {
+		formatted := fmt.Sprintf("%d", *activity.ActorID)
+		actorID = &formatted
+	}
+	return &model.OrganizationActivity{
+		ID:             fmt.Sprintf("%d", activity.ID),
+		OrganizationID: fmt.Sprintf("%d", activity.OrganizationID),
+		ActorID:        actorID,
+		Action:         activity.Action,
+		Details:        &activity.Details,
+		CreatedAt:      activity.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapBillingSubscription(sub *models.BillingSubscription) *model.BillingSubscription {
+	var renewsAt *string
+	if sub.RenewsAt != nil {
+		formatted := sub.RenewsAt.Format(time.RFC3339)
+		renewsAt = &formatted
+	}
+	return &model.BillingSubscription{
+		ID:             fmt.Sprintf("%d", sub.ID),
+		OrganizationID: fmt.Sprintf("%d", sub.OrganizationID),
+		Plan:           sub.Plan,
+		Status:         sub.Status,
+		RenewsAt:       renewsAt,
+		Seats:          int32(sub.Seats),
+		CreatedAt:      sub.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      sub.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapBillingInvoice(invoice *models.BillingInvoice) *model.BillingInvoice {
+	var periodStart *string
+	if invoice.PeriodStart != nil {
+		formatted := invoice.PeriodStart.Format(time.RFC3339)
+		periodStart = &formatted
+	}
+	var periodEnd *string
+	if invoice.PeriodEnd != nil {
+		formatted := invoice.PeriodEnd.Format(time.RFC3339)
+		periodEnd = &formatted
+	}
+	return &model.BillingInvoice{
+		ID:             fmt.Sprintf("%d", invoice.ID),
+		OrganizationID: fmt.Sprintf("%d", invoice.OrganizationID),
+		AmountCents:    int32(invoice.AmountCents),
+		Currency:       invoice.Currency,
+		Status:         invoice.Status,
+		PeriodStart:    periodStart,
+		PeriodEnd:      periodEnd,
+		InvoiceURL:     stringPtr(invoice.InvoiceURL),
+		IssuedAt:       invoice.IssuedAt.Format(time.RFC3339),
+	}
+}
+
+func mapBillingPaymentMethod(method *models.BillingPaymentMethod) *model.BillingPaymentMethod {
+	return &model.BillingPaymentMethod{
+		ID:             fmt.Sprintf("%d", method.ID),
+		OrganizationID: fmt.Sprintf("%d", method.OrganizationID),
+		Type:           method.Type,
+		Last4:          stringPtr(method.Last4),
+		Brand:          stringPtr(method.Brand),
+		ExpiryMonth:    int32Ptr(method.ExpiryMonth),
+		ExpiryYear:     int32Ptr(method.ExpiryYear),
+		IsDefault:      method.IsDefault,
+		CreatedAt:      method.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapBillingEvent(event *models.BillingEvent) *model.BillingEvent {
+	var actorID *string
+	if event.ActorID != nil {
+		formatted := fmt.Sprintf("%d", *event.ActorID)
+		actorID = &formatted
+	}
+	return &model.BillingEvent{
+		ID:             fmt.Sprintf("%d", event.ID),
+		OrganizationID: fmt.Sprintf("%d", event.OrganizationID),
+		ActorID:        actorID,
+		Type:           event.Type,
+		Details:        &event.Details,
+		CreatedAt:      event.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapFeatureFlag(flag *models.FeatureFlag) *model.FeatureFlag {
+	return &model.FeatureFlag{
+		ID:          fmt.Sprintf("%d", flag.ID),
+		Key:         flag.Key,
+		Enabled:     flag.Enabled,
+		Description: &flag.Description,
+		CreatedAt:   flag.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   flag.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapSkillCategory(cat *models.SkillCategory) *model.SkillCategory {
+	return &model.SkillCategory{
+		ID:          fmt.Sprintf("%d", cat.ID),
+		Name:        cat.Name,
+		Description: &cat.Description,
+		CreatedAt:   cat.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   cat.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapCompliancePolicy(policy *models.CompliancePolicy) *model.CompliancePolicy {
+	return &model.CompliancePolicy{
+		ID:        fmt.Sprintf("%d", policy.ID),
+		Title:     policy.Title,
+		Content:   policy.Content,
+		Status:    policy.Status,
+		CreatedAt: policy.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: policy.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapComplianceLog(logEntry *models.ComplianceLog) *model.ComplianceLog {
+	var actorID *string
+	if logEntry.ActorID != nil {
+		formatted := fmt.Sprintf("%d", *logEntry.ActorID)
+		actorID = &formatted
+	}
+	return &model.ComplianceLog{
+		ID:        fmt.Sprintf("%d", logEntry.ID),
+		ActorID:   actorID,
+		Action:    logEntry.Action,
+		Details:   &logEntry.Details,
+		CreatedAt: logEntry.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapComplianceJob(job *models.ComplianceJob) *model.ComplianceJob {
+	var completedAt *string
+	if job.CompletedAt != nil {
+		formatted := job.CompletedAt.Format(time.RFC3339)
+		completedAt = &formatted
+	}
+	return &model.ComplianceJob{
+		ID:         fmt.Sprintf("%d", job.ID),
+		RequestID:  fmt.Sprintf("%d", job.RequestID),
+		Type:       model.ComplianceRequestType(job.Type),
+		Status:     job.Status,
+		Result:     stringPtr(job.Result),
+		CompletedAt: completedAt,
+		CreatedAt:  job.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func mapModerationResolution(resolution *models.ModerationResolution) *model.ModerationResolution {
+	return &model.ModerationResolution{
+		ID:         fmt.Sprintf("%d", resolution.ID),
+		FlagID:     fmt.Sprintf("%d", resolution.FlagID),
+		Action:     resolution.Action,
+		Notes:      stringPtr(resolution.Notes),
+		ResolvedBy: fmt.Sprintf("%d", resolution.ResolvedBy),
+		ResolvedAt: resolution.ResolvedAt.Format(time.RFC3339),
+	}
+}
+
+func parseOptionalID(value *string) *uint {
+	if value == nil || *value == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseUint(*value, 10, 32)
+	if err != nil {
+		return nil
+	}
+	uid := uint(parsed)
+	return &uid
+}
+
+func parseUintID(value string) (uint, error) {
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid id")
+	}
+	return uint(parsed), nil
+}
+
+func isProjectOwnerOrAdmin(project *models.Project, userID uint) bool {
+	if project.OwnerID == userID {
+		return true
+	}
+	return false
+}
+
+func isProjectEditor(project *models.Project, userID uint, service interface {
+	GetMemberRole(projectID uint, userID uint) (string, error)
+}) bool {
+	if isProjectOwnerOrAdmin(project, userID) {
+		return true
+	}
+	role, err := service.GetMemberRole(project.ID, userID)
+	if err != nil {
+		return false
+	}
+	switch role {
+	case "OWNER", "ADMIN", "EDITOR", "COLLABORATOR":
+		return true
+	default:
+		return false
+	}
+}
+
+// MarkNotificationRead is the resolver for the MarkNotificationRead field.
+func (r *mutationResolver) MarkNotificationRead(ctx context.Context, id string, read bool) (*model.Notification, error) {
+	notificationID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid notification id")
+	}
+
+	notification, err := r.NotificationService.MarkNotificationRead(uint(notificationID), read)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update notification: %v", err)
+	}
+
+	var updatedExpiresAt *string
+	if notification.ExpiresAt != nil {
+		formatted := notification.ExpiresAt.Format(time.RFC3339)
+		updatedExpiresAt = &formatted
+	}
+	return &model.Notification{
+		ID:        fmt.Sprintf("%d", notification.ID),
+		Title:     notification.Title,
+		Content:   notification.Content,
+		Type:      model.NotificationType(notification.Type),
+		Priority:  model.NotificationPriority(notification.Priority),
+		IsRead:    notification.IsRead,
+		ActionURL: &notification.ActionURL,
+		CreatedAt: notification.CreatedAt.Format(time.RFC3339),
+		ExpiresAt: updatedExpiresAt,
 	}, nil
 }
 

@@ -6,6 +6,7 @@ require (
 	github.com/99designs/gqlgen v0.17.89
 	github.com/cloudinary/cloudinary-go/v2 v2.14.0
 	github.com/joho/godotenv v1.5.1
+	github.com/pquerna/otp v1.5.0
 	github.com/vektah/gqlparser/v2 v2.5.32
 	golang.org/x/crypto v0.39.0
 )
@@ -19,7 +20,6 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.6.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/pquerna/otp v1.5.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 )
 

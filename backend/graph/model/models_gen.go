@@ -3,22 +3,77 @@
 package model
 
 import (
+	"bytes"
+	"fmt"
+	"io"
+	"strconv"
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 )
 
+type AdminStats struct {
+	Users        int32 `json:"users"`
+	Talents      int32 `json:"talents"`
+	Clients      int32 `json:"clients"`
+	Jobs         int32 `json:"jobs"`
+	Projects     int32 `json:"projects"`
+	Applications int32 `json:"applications"`
+}
+
+type Announcement struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Category  string `json:"category"`
+	Priority  string `json:"priority"`
+	Author    string `json:"author"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type AnnouncementInput struct {
+	Title    string  `json:"title"`
+	Content  string  `json:"content"`
+	Category string  `json:"category"`
+	Priority *string `json:"priority,omitempty"`
+	Author   *string `json:"author,omitempty"`
+}
+
 type Applicants struct {
+	UserID    string  `json:"userId"`
+	JobID     int32   `json:"job_id"`
+	AppliedAt string  `json:"applied_at"`
+	Status    string  `json:"status"`
+	Resume    string  `json:"resume"`
+	Proposal  *string `json:"proposal,omitempty"`
+}
+
+type ApplicationEvent struct {
+	ID        string  `json:"id"`
+	JobID     string  `json:"jobId"`
+	UserID    string  `json:"userId"`
+	ActorID   *string `json:"actorId,omitempty"`
+	Action    string  `json:"action"`
+	Details   *string `json:"details,omitempty"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+type ApplicationNote struct {
+	ID        string `json:"id"`
+	JobID     string `json:"jobId"`
 	UserID    string `json:"userId"`
-	JobID     int32  `json:"job_id"`
-	AppliedAt string `json:"applied_at"`
-	Status    string `json:"status"`
-	Resume    string `json:"resume"`
+	AuthorID  string `json:"authorId"`
+	Note      string `json:"note"`
+	CreatedAt string `json:"createdAt"`
 }
 
 type ApplicationResponse struct {
 	Response string `json:"response"`
 	User     *User  `json:"user"`
+}
+
+type ApplicationTimelineFilter struct {
+	Action *string `json:"action,omitempty"`
 }
 
 type Approval struct {
@@ -30,9 +85,306 @@ type ApprovalResponse struct {
 	Response string `json:"response"`
 }
 
+type AuditLog struct {
+	ID        string  `json:"id"`
+	Action    string  `json:"action"`
+	TargetID  *string `json:"targetId,omitempty"`
+	Timestamp string  `json:"timestamp"`
+	Metadata  *string `json:"metadata,omitempty"`
+}
+
 type AuthPayload struct {
 	Token string `json:"token"`
 	User  *User  `json:"user"`
+}
+
+type BillingEvent struct {
+	ID             string  `json:"id"`
+	OrganizationID string  `json:"organizationId"`
+	ActorID        *string `json:"actorId,omitempty"`
+	Type           string  `json:"type"`
+	Details        *string `json:"details,omitempty"`
+	CreatedAt      string  `json:"createdAt"`
+}
+
+type BillingInvoice struct {
+	ID             string  `json:"id"`
+	OrganizationID string  `json:"organizationId"`
+	AmountCents    int32   `json:"amountCents"`
+	Currency       string  `json:"currency"`
+	Status         string  `json:"status"`
+	PeriodStart    *string `json:"periodStart,omitempty"`
+	PeriodEnd      *string `json:"periodEnd,omitempty"`
+	InvoiceURL     *string `json:"invoiceUrl,omitempty"`
+	IssuedAt       string  `json:"issuedAt"`
+}
+
+type BillingInvoiceMockInput struct {
+	AmountCents int32   `json:"amountCents"`
+	Currency    *string `json:"currency,omitempty"`
+}
+
+type BillingInvoiceStatusInput struct {
+	Status string `json:"status"`
+}
+
+type BillingPaymentMethod struct {
+	ID             string  `json:"id"`
+	OrganizationID string  `json:"organizationId"`
+	Type           string  `json:"type"`
+	Last4          *string `json:"last4,omitempty"`
+	Brand          *string `json:"brand,omitempty"`
+	ExpiryMonth    *int32  `json:"expiryMonth,omitempty"`
+	ExpiryYear     *int32  `json:"expiryYear,omitempty"`
+	IsDefault      bool    `json:"isDefault"`
+	CreatedAt      string  `json:"createdAt"`
+}
+
+type BillingPaymentMethodInput struct {
+	Type        string  `json:"type"`
+	Last4       *string `json:"last4,omitempty"`
+	Brand       *string `json:"brand,omitempty"`
+	ExpiryMonth *int32  `json:"expiryMonth,omitempty"`
+	ExpiryYear  *int32  `json:"expiryYear,omitempty"`
+	IsDefault   *bool   `json:"isDefault,omitempty"`
+}
+
+type BillingSubscription struct {
+	ID             string  `json:"id"`
+	OrganizationID string  `json:"organizationId"`
+	Plan           string  `json:"plan"`
+	Status         string  `json:"status"`
+	RenewsAt       *string `json:"renewsAt,omitempty"`
+	Seats          int32   `json:"seats"`
+	CreatedAt      string  `json:"createdAt"`
+	UpdatedAt      string  `json:"updatedAt"`
+}
+
+type BillingSubscriptionInput struct {
+	Plan     *string `json:"plan,omitempty"`
+	Status   *string `json:"status,omitempty"`
+	RenewsAt *string `json:"renewsAt,omitempty"`
+	Seats    *int32  `json:"seats,omitempty"`
+}
+
+type Chat struct {
+	ID string `json:"id"`
+}
+
+type ChatPage struct {
+	Messages   []*Message `json:"messages"`
+	NextCursor *string    `json:"nextCursor,omitempty"`
+}
+
+type ComplianceJob struct {
+	ID          string                `json:"id"`
+	RequestID   string                `json:"requestId"`
+	Type        ComplianceRequestType `json:"type"`
+	Status      string                `json:"status"`
+	Result      *string               `json:"result,omitempty"`
+	CompletedAt *string               `json:"completedAt,omitempty"`
+	CreatedAt   string                `json:"createdAt"`
+}
+
+type ComplianceJobUpdateInput struct {
+	Status string  `json:"status"`
+	Result *string `json:"result,omitempty"`
+}
+
+type ComplianceLog struct {
+	ID        string  `json:"id"`
+	ActorID   *string `json:"actorId,omitempty"`
+	Action    string  `json:"action"`
+	Details   *string `json:"details,omitempty"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+type CompliancePolicy struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+type CompliancePolicyInput struct {
+	Title   string  `json:"title"`
+	Content string  `json:"content"`
+	Status  *string `json:"status,omitempty"`
+}
+
+type CompliancePolicyUpdateInput struct {
+	ID      string  `json:"id"`
+	Title   *string `json:"title,omitempty"`
+	Content *string `json:"content,omitempty"`
+	Status  *string `json:"status,omitempty"`
+}
+
+type ComplianceRequest struct {
+	ID        string                `json:"id"`
+	UserID    string                `json:"userId"`
+	Type      ComplianceRequestType `json:"type"`
+	Status    string                `json:"status"`
+	Notes     *string               `json:"notes,omitempty"`
+	CreatedAt string                `json:"createdAt"`
+}
+
+type ComplianceRequestInput struct {
+	Type  ComplianceRequestType `json:"type"`
+	Notes *string               `json:"notes,omitempty"`
+}
+
+type ComplianceRequestUpdateInput struct {
+	Status string  `json:"status"`
+	Notes  *string `json:"notes,omitempty"`
+}
+
+type EmailRoutingConfig struct {
+	ID                    string  `json:"id"`
+	NotificationsSenderID *string `json:"notificationsSenderId,omitempty"`
+	AnnouncementsSenderID *string `json:"announcementsSenderId,omitempty"`
+	NewslettersSenderID   *string `json:"newslettersSenderId,omitempty"`
+}
+
+type EmailRoutingInput struct {
+	NotificationsSenderID *string `json:"notificationsSenderId,omitempty"`
+	AnnouncementsSenderID *string `json:"announcementsSenderId,omitempty"`
+	NewslettersSenderID   *string `json:"newslettersSenderId,omitempty"`
+}
+
+type EmailSenderProfile struct {
+	ID        string         `json:"id"`
+	Label     string         `json:"label"`
+	Email     string         `json:"email"`
+	Provider  SenderProvider `json:"provider"`
+	IsActive  bool           `json:"isActive"`
+	CreatedAt string         `json:"createdAt"`
+}
+
+type EmailSenderProfileInput struct {
+	Label    string         `json:"label"`
+	Email    string         `json:"email"`
+	Password *string        `json:"password,omitempty"`
+	APIKey   *string        `json:"apiKey,omitempty"`
+	Provider SenderProvider `json:"provider"`
+	IsActive *bool          `json:"isActive,omitempty"`
+}
+
+type EmailSenderProfileUpdateInput struct {
+	Label    *string         `json:"label,omitempty"`
+	Email    *string         `json:"email,omitempty"`
+	Password *string         `json:"password,omitempty"`
+	APIKey   *string         `json:"apiKey,omitempty"`
+	Provider *SenderProvider `json:"provider,omitempty"`
+	IsActive *bool           `json:"isActive,omitempty"`
+}
+
+type EmailTemplate struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Trigger string `json:"trigger"`
+	Subject string `json:"subject"`
+	Body    string `json:"body"`
+	Channel string `json:"channel"`
+	Status  string `json:"status"`
+}
+
+type EmailTemplateInput struct {
+	Name    string  `json:"name"`
+	Trigger string  `json:"trigger"`
+	Subject string  `json:"subject"`
+	Body    string  `json:"body"`
+	Channel *string `json:"channel,omitempty"`
+	Status  *string `json:"status,omitempty"`
+}
+
+type EmailTemplateUpdateInput struct {
+	Name    *string `json:"name,omitempty"`
+	Trigger *string `json:"trigger,omitempty"`
+	Subject *string `json:"subject,omitempty"`
+	Body    *string `json:"body,omitempty"`
+	Channel *string `json:"channel,omitempty"`
+	Status  *string `json:"status,omitempty"`
+}
+
+type Experience struct {
+	ID          string  `json:"id"`
+	ProfileID   string  `json:"profileId"`
+	JobTitle    string  `json:"jobTitle"`
+	CompanyName string  `json:"companyName"`
+	StartDate   string  `json:"startDate"`
+	EndDate     *string `json:"endDate,omitempty"`
+	Description *string `json:"description,omitempty"`
+	IsCurrent   bool    `json:"isCurrent"`
+}
+
+type ExperienceInput struct {
+	ProfileID   *string `json:"profileId,omitempty"`
+	JobTitle    string  `json:"jobTitle"`
+	CompanyName string  `json:"companyName"`
+	StartDate   string  `json:"startDate"`
+	EndDate     *string `json:"endDate,omitempty"`
+	Description *string `json:"description,omitempty"`
+	IsCurrent   *bool   `json:"isCurrent,omitempty"`
+}
+
+type ExperienceUpdateInput struct {
+	JobTitle    *string `json:"jobTitle,omitempty"`
+	CompanyName *string `json:"companyName,omitempty"`
+	StartDate   *string `json:"startDate,omitempty"`
+	EndDate     *string `json:"endDate,omitempty"`
+	Description *string `json:"description,omitempty"`
+	IsCurrent   *bool   `json:"isCurrent,omitempty"`
+}
+
+type FeatureFlag struct {
+	ID          string  `json:"id"`
+	Key         string  `json:"key"`
+	Enabled     bool    `json:"enabled"`
+	Description *string `json:"description,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+}
+
+type FeatureFlagInput struct {
+	Key         string  `json:"key"`
+	Enabled     bool    `json:"enabled"`
+	Description *string `json:"description,omitempty"`
+}
+
+type FileAsset struct {
+	ID        string  `json:"id"`
+	OwnerID   string  `json:"ownerId"`
+	ProjectID *string `json:"projectId,omitempty"`
+	ChatID    *string `json:"chatId,omitempty"`
+	Context   string  `json:"context"`
+	FileName  string  `json:"fileName"`
+	FileURL   string  `json:"fileUrl"`
+	FileType  *string `json:"fileType,omitempty"`
+	FileSize  int32   `json:"fileSize"`
+	Tags      *string `json:"tags,omitempty"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+type FileTagsInput struct {
+	Tags string `json:"tags"`
+}
+
+type FileUploadInput struct {
+	File      graphql.Upload `json:"file"`
+	Context   *string        `json:"context,omitempty"`
+	ProjectID *string        `json:"projectId,omitempty"`
+	ChatID    *string        `json:"chatId,omitempty"`
+	Tags      *string        `json:"tags,omitempty"`
+}
+
+type Flag struct {
+	ID         string `json:"id"`
+	TargetType string `json:"targetType"`
+	TargetID   string `json:"targetId"`
+	Reason     string `json:"reason"`
+	Status     string `json:"status"`
 }
 
 type JobApplicantFilter struct {
@@ -56,14 +408,26 @@ type JobFilter struct {
 }
 
 type JobOffer struct {
-	JobID            string `json:"job_id"`
-	JobType          string `json:"job_type"`
-	Title            string `json:"title"`
-	Description      string `json:"description"`
-	Location         string `json:"location"`
-	OfferedByuser    *User  `json:"offeredByuser"`
-	Category         string `json:"category"`
-	ApplicationCount int32  `json:"applicationCount"`
+	JobID            string  `json:"job_id"`
+	JobType          string  `json:"job_type"`
+	Title            string  `json:"title"`
+	Description      string  `json:"description"`
+	Location         string  `json:"location"`
+	OfferedByuser    *User   `json:"offeredByuser"`
+	Category         string  `json:"category"`
+	ApplicationCount int32   `json:"applicationCount"`
+	SalaryRange      *string `json:"salaryRange,omitempty"`
+}
+
+type JobUpdateInput struct {
+	JobType         *string `json:"job_type,omitempty"`
+	Title           *string `json:"title,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	Location        *string `json:"location,omitempty"`
+	Category        *string `json:"category,omitempty"`
+	SalaryRange     *string `json:"salaryRange,omitempty"`
+	ExperienceLevel *string `json:"experienceLevel,omitempty"`
+	Status          *string `json:"status,omitempty"`
 }
 
 type LoginInput struct {
@@ -77,6 +441,19 @@ type Message struct {
 	SenderID int32     `json:"senderId"`
 	ChatID   string    `json:"chatID"`
 	SentAt   time.Time `json:"sentAt"`
+	IsRead   bool      `json:"isRead"`
+	IsFile   bool      `json:"isFile"`
+	FileURL  *string   `json:"fileUrl,omitempty"`
+	FileName *string   `json:"fileName,omitempty"`
+}
+
+type ModerationResolution struct {
+	ID         string  `json:"id"`
+	FlagID     string  `json:"flagId"`
+	Action     string  `json:"action"`
+	Notes      *string `json:"notes,omitempty"`
+	ResolvedBy string  `json:"resolvedBy"`
+	ResolvedAt string  `json:"resolvedAt"`
 }
 
 type Mutation struct {
@@ -104,25 +481,819 @@ type NewUser struct {
 	Plan        *string `json:"plan,omitempty"`
 }
 
+type Newsletter struct {
+	ID          string           `json:"id"`
+	Subject     string           `json:"subject"`
+	Preheader   *string          `json:"preheader,omitempty"`
+	Content     string           `json:"content"`
+	Segment     string           `json:"segment"`
+	Status      NewsletterStatus `json:"status"`
+	ScheduledAt *string          `json:"scheduledAt,omitempty"`
+	SentAt      *string          `json:"sentAt,omitempty"`
+	CreatedAt   string           `json:"createdAt"`
+}
+
+type NewsletterInput struct {
+	Subject   string  `json:"subject"`
+	Preheader *string `json:"preheader,omitempty"`
+	Content   string  `json:"content"`
+	Segment   *string `json:"segment,omitempty"`
+}
+
+type NewsletterUpdateInput struct {
+	Subject   *string           `json:"subject,omitempty"`
+	Preheader *string           `json:"preheader,omitempty"`
+	Content   *string           `json:"content,omitempty"`
+	Segment   *string           `json:"segment,omitempty"`
+	Status    *NewsletterStatus `json:"status,omitempty"`
+}
+
+type Notification struct {
+	ID        string               `json:"id"`
+	Title     string               `json:"title"`
+	Content   string               `json:"content"`
+	Type      NotificationType     `json:"type"`
+	Priority  NotificationPriority `json:"priority"`
+	IsRead    bool                 `json:"isRead"`
+	ActionURL *string              `json:"actionUrl,omitempty"`
+	CreatedAt string               `json:"createdAt"`
+	ExpiresAt *string              `json:"expiresAt,omitempty"`
+}
+
+type Organization struct {
+	ID          string  `json:"id"`
+	OwnerID     string  `json:"ownerId"`
+	Name        string  `json:"name"`
+	Industry    *string `json:"industry,omitempty"`
+	Size        *string `json:"size,omitempty"`
+	Website     *string `json:"website,omitempty"`
+	Description *string `json:"description,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+}
+
+type OrganizationActivity struct {
+	ID             string  `json:"id"`
+	OrganizationID string  `json:"organizationId"`
+	ActorID        *string `json:"actorId,omitempty"`
+	Action         string  `json:"action"`
+	Details        *string `json:"details,omitempty"`
+	CreatedAt      string  `json:"createdAt"`
+}
+
+type OrganizationInput struct {
+	Name        string  `json:"name"`
+	Industry    *string `json:"industry,omitempty"`
+	Size        *string `json:"size,omitempty"`
+	Website     *string `json:"website,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+type OrganizationInvite struct {
+	ID             string  `json:"id"`
+	OrganizationID string  `json:"organizationId"`
+	InviterID      string  `json:"inviterId"`
+	InviteeID      *string `json:"inviteeId,omitempty"`
+	InviteeEmail   *string `json:"inviteeEmail,omitempty"`
+	Status         string  `json:"status"`
+	Message        *string `json:"message,omitempty"`
+	CreatedAt      string  `json:"createdAt"`
+	RespondedAt    *string `json:"respondedAt,omitempty"`
+}
+
+type OrganizationInviteInput struct {
+	InviteeID    *string `json:"inviteeId,omitempty"`
+	InviteeEmail *string `json:"inviteeEmail,omitempty"`
+	Message      *string `json:"message,omitempty"`
+}
+
+type OrganizationMember struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organizationId"`
+	UserID         string `json:"userId"`
+	Role           string `json:"role"`
+	JoinedAt       string `json:"joinedAt"`
+}
+
+type OrganizationUpdateInput struct {
+	Name        *string `json:"name,omitempty"`
+	Industry    *string `json:"industry,omitempty"`
+	Size        *string `json:"size,omitempty"`
+	Website     *string `json:"website,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+type Permission struct {
+	ID          string  `json:"id"`
+	Key         string  `json:"key"`
+	Description *string `json:"description,omitempty"`
+}
+
+type PermissionInput struct {
+	Key         string  `json:"key"`
+	Description *string `json:"description,omitempty"`
+}
+
+type Project struct {
+	ID          string               `json:"id"`
+	OwnerID     string               `json:"ownerId"`
+	Owner       *User                `json:"owner"`
+	Title       string               `json:"title"`
+	Description *string              `json:"description,omitempty"`
+	Status      string               `json:"status"`
+	IsPublic    bool                 `json:"isPublic"`
+	CoverImage  *string              `json:"coverImage,omitempty"`
+	Summary     *string              `json:"summary,omitempty"`
+	ViewCount   int32                `json:"viewCount"`
+	CreatedAt   string               `json:"createdAt"`
+	UpdatedAt   string               `json:"updatedAt"`
+	Members     []*ProjectMember     `json:"members"`
+	Invitations []*ProjectInvitation `json:"invitations"`
+}
+
+type ProjectActivity struct {
+	ID        string  `json:"id"`
+	ProjectID string  `json:"projectId"`
+	ActorID   *string `json:"actorId,omitempty"`
+	Action    string  `json:"action"`
+	Details   *string `json:"details,omitempty"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+type ProjectCallDetail struct {
+	Session      *VideoSession              `json:"session"`
+	Participants []*VideoSessionParticipant `json:"participants"`
+	Invites      []*VideoSessionInvite      `json:"invites"`
+}
+
+type ProjectCallStatusCount struct {
+	Status string `json:"status"`
+	Count  int32  `json:"count"`
+}
+
+type ProjectCallSummary struct {
+	Session          *VideoSession `json:"session"`
+	ParticipantCount int32         `json:"participantCount"`
+	InviteCount      int32         `json:"inviteCount"`
+}
+
+type ProjectChat struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId"`
+	ChatID    string `json:"chatId"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type ProjectDeliverable struct {
+	ID          string  `json:"id"`
+	ProjectID   string  `json:"projectId"`
+	Title       string  `json:"title"`
+	Description *string `json:"description,omitempty"`
+	Status      string  `json:"status"`
+	DueDate     *string `json:"dueDate,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+}
+
+type ProjectDeliverableInput struct {
+	ProjectID   string  `json:"projectId"`
+	Title       string  `json:"title"`
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	DueDate     *string `json:"dueDate,omitempty"`
+}
+
+type ProjectDeliverableUpdateInput struct {
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	DueDate     *string `json:"dueDate,omitempty"`
+}
+
+type ProjectInput struct {
+	Title       string  `json:"title"`
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	IsPublic    *bool   `json:"isPublic,omitempty"`
+	CoverImage  *string `json:"coverImage,omitempty"`
+	Summary     *string `json:"summary,omitempty"`
+}
+
+type ProjectInvitation struct {
+	ID           string  `json:"id"`
+	ProjectID    string  `json:"projectId"`
+	InviterID    string  `json:"inviterId"`
+	InviteeID    *string `json:"inviteeId,omitempty"`
+	InviteeEmail *string `json:"inviteeEmail,omitempty"`
+	Role         string  `json:"role"`
+	Status       string  `json:"status"`
+	Message      *string `json:"message,omitempty"`
+	CreatedAt    string  `json:"createdAt"`
+	ExpiresAt    *string `json:"expiresAt,omitempty"`
+	ResendCount  int32   `json:"resendCount"`
+	RespondedAt  *string `json:"respondedAt,omitempty"`
+}
+
+type ProjectInviteInput struct {
+	ProjectID    string  `json:"projectId"`
+	InviteeID    *string `json:"inviteeId,omitempty"`
+	InviteeEmail *string `json:"inviteeEmail,omitempty"`
+	Role         *string `json:"role,omitempty"`
+	Message      *string `json:"message,omitempty"`
+}
+
+type ProjectMember struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId"`
+	UserID    string `json:"userId"`
+	Role      string `json:"role"`
+	JoinedAt  string `json:"joinedAt"`
+	User      *User  `json:"user"`
+}
+
+type ProjectPermissionsInput struct {
+	Role string `json:"role"`
+}
+
+type ProjectSubmission struct {
+	ID            string  `json:"id"`
+	ProjectID     string  `json:"projectId"`
+	DeliverableID string  `json:"deliverableId"`
+	SubmitterID   string  `json:"submitterId"`
+	Content       *string `json:"content,omitempty"`
+	FileURL       *string `json:"fileUrl,omitempty"`
+	Status        string  `json:"status"`
+	ReviewedBy    *string `json:"reviewedBy,omitempty"`
+	ReviewedAt    *string `json:"reviewedAt,omitempty"`
+	Feedback      *string `json:"feedback,omitempty"`
+	CreatedAt     string  `json:"createdAt"`
+}
+
+type ProjectSubmissionInput struct {
+	DeliverableID string  `json:"deliverableId"`
+	Content       *string `json:"content,omitempty"`
+	FileURL       *string `json:"fileUrl,omitempty"`
+}
+
+type ProjectSubmissionReviewInput struct {
+	Status   string  `json:"status"`
+	Feedback *string `json:"feedback,omitempty"`
+}
+
+type ProjectTask struct {
+	ID          string  `json:"id"`
+	ProjectID   string  `json:"projectId"`
+	Title       string  `json:"title"`
+	Description *string `json:"description,omitempty"`
+	Status      string  `json:"status"`
+	Priority    string  `json:"priority"`
+	AssigneeID  *string `json:"assigneeId,omitempty"`
+	DueDate     *string `json:"dueDate,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+}
+
+type ProjectTaskInput struct {
+	ProjectID   string  `json:"projectId"`
+	Title       string  `json:"title"`
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	Priority    *string `json:"priority,omitempty"`
+	AssigneeID  *string `json:"assigneeId,omitempty"`
+	DueDate     *string `json:"dueDate,omitempty"`
+}
+
+type ProjectTaskUpdateInput struct {
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	Priority    *string `json:"priority,omitempty"`
+	AssigneeID  *string `json:"assigneeId,omitempty"`
+	DueDate     *string `json:"dueDate,omitempty"`
+}
+
+type ProjectUpdateInput struct {
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	IsPublic    *bool   `json:"isPublic,omitempty"`
+	CoverImage  *string `json:"coverImage,omitempty"`
+	Summary     *string `json:"summary,omitempty"`
+}
+
+type PublicProjectFilter struct {
+	Category *string `json:"category,omitempty"`
+	Status   *string `json:"status,omitempty"`
+	OwnerID  *string `json:"ownerId,omitempty"`
+	Sort     *string `json:"sort,omitempty"`
+	Limit    *int32  `json:"limit,omitempty"`
+	Offset   *int32  `json:"offset,omitempty"`
+}
+
+type PublicProjectPage struct {
+	Items      []*Project `json:"items"`
+	NextCursor *string    `json:"nextCursor,omitempty"`
+}
+
+type PublicTalentFilter struct {
+	Skill    *string  `json:"skill,omitempty"`
+	Skills   []string `json:"skills,omitempty"`
+	Location *string  `json:"location,omitempty"`
+	Title    *string  `json:"title,omitempty"`
+	Sort     *string  `json:"sort,omitempty"`
+	Limit    *int32   `json:"limit,omitempty"`
+	Offset   *int32   `json:"offset,omitempty"`
+}
+
+type PublicTalentPage struct {
+	Items      []*TalentProfile `json:"items"`
+	NextCursor *string          `json:"nextCursor,omitempty"`
+}
+
 type Query struct {
+}
+
+type RTCSignal struct {
+	Signal   string `json:"signal"`
+	Type     string `json:"type"`
+	SenderID int32  `json:"senderId"`
 }
 
 type RejectionResponse struct {
 	Response string `json:"response"`
 }
 
+type Role struct {
+	ID          string        `json:"id"`
+	Name        string        `json:"name"`
+	Summary     *string       `json:"summary,omitempty"`
+	IsSystem    bool          `json:"isSystem"`
+	Permissions []*Permission `json:"permissions"`
+}
+
+type RoleInput struct {
+	Name     string  `json:"name"`
+	Summary  *string `json:"summary,omitempty"`
+	IsSystem *bool   `json:"isSystem,omitempty"`
+}
+
+type RoleUpdateInput struct {
+	Name     *string `json:"name,omitempty"`
+	Summary  *string `json:"summary,omitempty"`
+	IsSystem *bool   `json:"isSystem,omitempty"`
+}
+
+type Skill struct {
+	ID               string  `json:"id"`
+	ProfileID        string  `json:"profileId"`
+	SkillName        string  `json:"skillName"`
+	ProficiencyLevel *string `json:"proficiencyLevel,omitempty"`
+	Category         *string `json:"category,omitempty"`
+}
+
+type SkillCategory struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+}
+
+type SkillCategoryInput struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+}
+
+type SkillInput struct {
+	ProfileID        *string `json:"profileId,omitempty"`
+	SkillName        string  `json:"skillName"`
+	ProficiencyLevel *string `json:"proficiencyLevel,omitempty"`
+	Category         *string `json:"category,omitempty"`
+}
+
+type SkillUpdateInput struct {
+	SkillName        *string `json:"skillName,omitempty"`
+	ProficiencyLevel *string `json:"proficiencyLevel,omitempty"`
+	Category         *string `json:"category,omitempty"`
+}
+
 type Subscription struct {
 }
 
-type User struct {
-	ID          string  `json:"id"`
-	FirstName   string  `json:"firstName"`
-	LastName    string  `json:"lastName"`
-	Email       string  `json:"email"`
-	Password    string  `json:"password"`
-	PhoneNumber string  `json:"phoneNumber"`
-	Address     string  `json:"address"`
-	Role        string  `json:"role"`
+type TalentProfile struct {
+	ID                string        `json:"id"`
+	UserID            string        `json:"userId"`
+	ProfessionalTitle *string       `json:"professionalTitle,omitempty"`
+	Bio               *string       `json:"bio,omitempty"`
+	Location          *string       `json:"location,omitempty"`
+	ProfileImageURL   *string       `json:"profileImageUrl,omitempty"`
+	IsPublic          bool          `json:"isPublic"`
+	ViewCount         int32         `json:"viewCount"`
+	CompletionPercent int32         `json:"completionPercent"`
+	Skills            []*Skill      `json:"skills"`
+	Experiences       []*Experience `json:"experiences"`
+	WorkSamples       []*WorkSample `json:"workSamples"`
+}
+
+type TalentProfileInput struct {
+	ProfessionalTitle *string `json:"professionalTitle,omitempty"`
+	Bio               *string `json:"bio,omitempty"`
+	Location          *string `json:"location,omitempty"`
+	ProfileImageURL   *string `json:"profileImageUrl,omitempty"`
+	CompletionPercent *int32  `json:"completionPercent,omitempty"`
+	IsPublic          *bool   `json:"isPublic,omitempty"`
+}
+
+type UpdateProfileInput struct {
+	FirstName   *string `json:"firstName,omitempty"`
+	LastName    *string `json:"lastName,omitempty"`
+	PhoneNumber *string `json:"phoneNumber,omitempty"`
+	Address     *string `json:"address,omitempty"`
 	Cv          *string `json:"cv,omitempty"`
-	IsActive    bool    `json:"isActive"`
+}
+
+type UpdateSettingsInput struct {
+	ThemeAccent *string `json:"themeAccent,omitempty"`
+}
+
+type User struct {
+	ID               string  `json:"id"`
+	FirstName        string  `json:"firstName"`
+	LastName         string  `json:"lastName"`
+	Email            string  `json:"email"`
+	PhoneNumber      string  `json:"phoneNumber"`
+	Address          string  `json:"address"`
+	Role             string  `json:"role"`
+	Cv               *string `json:"cv,omitempty"`
+	IsActive         bool    `json:"isActive"`
+	IsVerified       bool    `json:"isVerified"`
+	TwoFactorEnabled bool    `json:"twoFactorEnabled"`
+	ThemePreference  *string `json:"themePreference,omitempty"`
+}
+
+type VideoSession struct {
+	ID           string  `json:"id"`
+	ProjectID    *string `json:"projectId,omitempty"`
+	ChatID       *string `json:"chatId,omitempty"`
+	HostID       string  `json:"hostId"`
+	Title        string  `json:"title"`
+	MeetingURL   *string `json:"meetingUrl,omitempty"`
+	Status       string  `json:"status"`
+	ScheduledAt  string  `json:"scheduledAt"`
+	StartedAt    *string `json:"startedAt,omitempty"`
+	EndedAt      *string `json:"endedAt,omitempty"`
+	RecordingURL *string `json:"recordingUrl,omitempty"`
+	CreatedAt    string  `json:"createdAt"`
+}
+
+type VideoSessionInput struct {
+	Title       string  `json:"title"`
+	ScheduledAt string  `json:"scheduledAt"`
+	ProjectID   *string `json:"projectId,omitempty"`
+	ChatID      *string `json:"chatId,omitempty"`
+	MeetingURL  *string `json:"meetingUrl,omitempty"`
+}
+
+type VideoSessionInvite struct {
+	ID           string  `json:"id"`
+	SessionID    string  `json:"sessionId"`
+	InviterID    string  `json:"inviterId"`
+	InviteeID    *string `json:"inviteeId,omitempty"`
+	InviteeEmail *string `json:"inviteeEmail,omitempty"`
+	Status       string  `json:"status"`
+	Message      *string `json:"message,omitempty"`
+	CreatedAt    string  `json:"createdAt"`
+	RespondedAt  *string `json:"respondedAt,omitempty"`
+}
+
+type VideoSessionInviteInput struct {
+	SessionID    string  `json:"sessionId"`
+	InviteeID    *string `json:"inviteeId,omitempty"`
+	InviteeEmail *string `json:"inviteeEmail,omitempty"`
+	Message      *string `json:"message,omitempty"`
+}
+
+type VideoSessionParticipant struct {
+	ID        string  `json:"id"`
+	SessionID string  `json:"sessionId"`
+	UserID    string  `json:"userId"`
+	Role      string  `json:"role"`
+	Status    string  `json:"status"`
+	JoinedAt  *string `json:"joinedAt,omitempty"`
+}
+
+type VideoSessionStatusInput struct {
+	Status string `json:"status"`
+}
+
+type WorkSample struct {
+	ID           string  `json:"id"`
+	ProfileID    string  `json:"profileId"`
+	Title        *string `json:"title,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	ImageURL     string  `json:"imageUrl"`
+	ExternalLink *string `json:"externalLink,omitempty"`
+	DisplayOrder int32   `json:"displayOrder"`
+}
+
+type WorkSampleInput struct {
+	ProfileID    *string `json:"profileId,omitempty"`
+	Title        *string `json:"title,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	ImageURL     string  `json:"imageUrl"`
+	ExternalLink *string `json:"externalLink,omitempty"`
+	DisplayOrder *int32  `json:"displayOrder,omitempty"`
+}
+
+type WorkSampleUpdateInput struct {
+	Title        *string `json:"title,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	ImageURL     *string `json:"imageUrl,omitempty"`
+	ExternalLink *string `json:"externalLink,omitempty"`
+	DisplayOrder *int32  `json:"displayOrder,omitempty"`
+}
+
+type ComplianceRequestType string
+
+const (
+	ComplianceRequestTypeExport   ComplianceRequestType = "EXPORT"
+	ComplianceRequestTypeDeletion ComplianceRequestType = "DELETION"
+)
+
+var AllComplianceRequestType = []ComplianceRequestType{
+	ComplianceRequestTypeExport,
+	ComplianceRequestTypeDeletion,
+}
+
+func (e ComplianceRequestType) IsValid() bool {
+	switch e {
+	case ComplianceRequestTypeExport, ComplianceRequestTypeDeletion:
+		return true
+	}
+	return false
+}
+
+func (e ComplianceRequestType) String() string {
+	return string(e)
+}
+
+func (e *ComplianceRequestType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ComplianceRequestType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ComplianceRequestType", str)
+	}
+	return nil
+}
+
+func (e ComplianceRequestType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ComplianceRequestType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ComplianceRequestType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type NewsletterStatus string
+
+const (
+	NewsletterStatusDraft     NewsletterStatus = "DRAFT"
+	NewsletterStatusScheduled NewsletterStatus = "SCHEDULED"
+	NewsletterStatusSent      NewsletterStatus = "SENT"
+)
+
+var AllNewsletterStatus = []NewsletterStatus{
+	NewsletterStatusDraft,
+	NewsletterStatusScheduled,
+	NewsletterStatusSent,
+}
+
+func (e NewsletterStatus) IsValid() bool {
+	switch e {
+	case NewsletterStatusDraft, NewsletterStatusScheduled, NewsletterStatusSent:
+		return true
+	}
+	return false
+}
+
+func (e NewsletterStatus) String() string {
+	return string(e)
+}
+
+func (e *NewsletterStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = NewsletterStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid NewsletterStatus", str)
+	}
+	return nil
+}
+
+func (e NewsletterStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *NewsletterStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e NewsletterStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type NotificationPriority string
+
+const (
+	NotificationPriorityLow      NotificationPriority = "LOW"
+	NotificationPriorityNormal   NotificationPriority = "NORMAL"
+	NotificationPriorityCritical NotificationPriority = "CRITICAL"
+)
+
+var AllNotificationPriority = []NotificationPriority{
+	NotificationPriorityLow,
+	NotificationPriorityNormal,
+	NotificationPriorityCritical,
+}
+
+func (e NotificationPriority) IsValid() bool {
+	switch e {
+	case NotificationPriorityLow, NotificationPriorityNormal, NotificationPriorityCritical:
+		return true
+	}
+	return false
+}
+
+func (e NotificationPriority) String() string {
+	return string(e)
+}
+
+func (e *NotificationPriority) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = NotificationPriority(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid NotificationPriority", str)
+	}
+	return nil
+}
+
+func (e NotificationPriority) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *NotificationPriority) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e NotificationPriority) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type NotificationType string
+
+const (
+	NotificationTypeTransactional NotificationType = "TRANSACTIONAL"
+	NotificationTypeBroadcast     NotificationType = "BROADCAST"
+	NotificationTypeNewsletter    NotificationType = "NEWSLETTER"
+)
+
+var AllNotificationType = []NotificationType{
+	NotificationTypeTransactional,
+	NotificationTypeBroadcast,
+	NotificationTypeNewsletter,
+}
+
+func (e NotificationType) IsValid() bool {
+	switch e {
+	case NotificationTypeTransactional, NotificationTypeBroadcast, NotificationTypeNewsletter:
+		return true
+	}
+	return false
+}
+
+func (e NotificationType) String() string {
+	return string(e)
+}
+
+func (e *NotificationType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = NotificationType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid NotificationType", str)
+	}
+	return nil
+}
+
+func (e NotificationType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *NotificationType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e NotificationType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type SenderProvider string
+
+const (
+	SenderProviderSMTP     SenderProvider = "SMTP"
+	SenderProviderSendGrid SenderProvider = "SendGrid"
+	SenderProviderMailgun  SenderProvider = "Mailgun"
+	SenderProviderAWSSes   SenderProvider = "AWS_SES"
+)
+
+var AllSenderProvider = []SenderProvider{
+	SenderProviderSMTP,
+	SenderProviderSendGrid,
+	SenderProviderMailgun,
+	SenderProviderAWSSes,
+}
+
+func (e SenderProvider) IsValid() bool {
+	switch e {
+	case SenderProviderSMTP, SenderProviderSendGrid, SenderProviderMailgun, SenderProviderAWSSes:
+		return true
+	}
+	return false
+}
+
+func (e SenderProvider) String() string {
+	return string(e)
+}
+
+func (e *SenderProvider) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SenderProvider(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SenderProvider", str)
+	}
+	return nil
+}
+
+func (e SenderProvider) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SenderProvider) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SenderProvider) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }

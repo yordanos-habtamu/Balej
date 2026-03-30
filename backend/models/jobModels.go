@@ -29,7 +29,27 @@ type JobApplicant struct {
 	UserID           uint      `json:"user_id" gorm:"primaryKey;not null"`
 	AppliedAt        time.Time `json:"applied_at" gorm:"autoCreateTime"`
 	Status           string    `json:"status" gorm:"type:application_status;default:'pending'"`
-	Resume           string    `json:"resume" gorm:"not null"` 
+	Resume           string    `json:"resume" gorm:"not null"`
+	Proposal         string    `json:"proposal" gorm:"type:text"`
+}
+
+// JobApplicationNote captures recruiter/admin notes about an application.
+type JobApplicationNote struct {
+	gorm.Model
+	JobOfferID uint   `json:"job_offer_id" gorm:"not null"`
+	UserID     uint   `json:"user_id" gorm:"not null"`
+	AuthorID   uint   `json:"author_id" gorm:"not null"`
+	Note       string `json:"note" gorm:"type:text"`
+}
+
+// JobApplicationEvent captures application timeline events.
+type JobApplicationEvent struct {
+	gorm.Model
+	JobOfferID uint   `json:"job_offer_id" gorm:"not null"`
+	UserID     uint   `json:"user_id" gorm:"not null"`
+	ActorID    *uint  `json:"actor_id"`
+	Action     string `json:"action" gorm:"not null"`
+	Details    string `json:"details" gorm:"type:text"`
 }
 
 type JobFilter struct {

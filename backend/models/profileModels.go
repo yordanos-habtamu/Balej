@@ -15,6 +15,7 @@ type TalentProfile struct {
 	Bio               string `json:"bio" gorm:"type:text"`
 	Location          string `json:"location"`
 	ProfileImageURL   string `json:"profile_image_url"`
+	IsPublic          bool   `json:"is_public" gorm:"default:false"`
 	ViewCount         int    `json:"view_count" gorm:"default:0"`
 	CompletionPercent int    `json:"completion_percent" gorm:"default:0"`
 	Skills            []Skill      `json:"skills" gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`

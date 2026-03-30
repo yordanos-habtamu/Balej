@@ -16,6 +16,16 @@ type Flag struct {
 	ReportedByUser User  `json:"reported_by_user" gorm:"foreignKey:ReportedBy"`
 }
 
+// ModerationResolution captures resolution details for a flag.
+type ModerationResolution struct {
+	gorm.Model
+	FlagID     uint      `json:"flag_id" gorm:"not null"`
+	Action     string    `json:"action" gorm:"not null"`
+	Notes      string    `json:"notes" gorm:"type:text"`
+	ResolvedBy uint      `json:"resolved_by" gorm:"not null"`
+	ResolvedAt time.Time `json:"resolved_at" gorm:"autoCreateTime"`
+}
+
 // AuditLog captures system-wide administrative actions
 type AuditLog struct {
 	gorm.Model

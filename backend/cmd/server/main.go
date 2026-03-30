@@ -14,11 +14,22 @@ import (
 
 	// Your local imports, adjust paths as needed
 	"github.com/yordanos-habtamu/GormWithGraphql/graph"
+	"github.com/yordanos-habtamu/GormWithGraphql/middleware"
 	"github.com/yordanos-habtamu/GormWithGraphql/models"
 	"github.com/yordanos-habtamu/GormWithGraphql/models/db"
 	pubsub "github.com/yordanos-habtamu/GormWithGraphql/pubsub"
 	"github.com/yordanos-habtamu/GormWithGraphql/repository"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/admin"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/compliance"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/communication"
 	"github.com/yordanos-habtamu/GormWithGraphql/service/job"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/moderation"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/notification"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/organization"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/project"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/profile"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/rbac"
+	"github.com/yordanos-habtamu/GormWithGraphql/service/security"
 	"github.com/yordanos-habtamu/GormWithGraphql/service/user"
 )
 
@@ -40,6 +51,7 @@ func main() {
 	// Dependency injection setup (your services)
 	userRepo := repository.NewUserRepository(database)
 	userService := user.NewUserService(userRepo)
+	adminService := admin.NewAdminService(database)
 
 	jobRepo := repository.NewjobRepository(database)
 	jobService := job.NewJobService(jobRepo)
@@ -47,14 +59,38 @@ func main() {
 	chatRepo := repository.NewChatRepository(database)
 	chatService := user.NewChatService(chatRepo)
 
+	notificationService := notification.NewNotificationService(database)
+	moderationService := moderation.NewModerationService(database)
+	secureRelayService := security.NewSecureRelayService()
+	complianceService := compliance.NewComplianceService(database)
+	communicationService := communication.NewCommunicationService(database)
+	organizationService := organization.NewOrganizationService(database)
+	rbacService := rbac.NewRBACService(database)
+	profileService := profile.NewProfileService(database)
+	projectService := project.NewProjectService(database)
+
 	pubsub := pubsub.NewPubSub()
 
 	resolver := &graph.Resolver{
 		UserService: userService,
+		AdminService: adminService,
 		JobService:  jobService,
 		ChatService: chatService,
+		NotificationService: notificationService,
+		ModerationService: moderationService,
+		SecureRelayService: secureRelayService,
+		ComplianceService: complianceService,
+		CommunicationService: communicationService,
+		OrganizationService: organizationService,
+		RBACService: rbacService,
+		ProfileService: profileService,
+		ProjectService: projectService,
 		PubSub:      pubsub,
 	}
+
+	// Start mock compliance job worker
+	stopComplianceWorker := make(chan struct{})
+	go complianceService.StartAutoCompleteWorker(stopComplianceWorker, 30*time.Second)
 
 	// Setup gqlgen server
 	srv := handler.New(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
@@ -75,7 +111,7 @@ func main() {
 
 	// Setup router
 	r := mux.NewRouter()
-	r.Handle("/query", srv).Methods("GET", "POST", "OPTIONS")
+	r.Handle("/query", middleware.AuthMiddleware(srv)).Methods("GET", "POST", "OPTIONS")
 	r.Handle("/", playground.Handler("GraphQL Playground", "/query"))
 
 	// CORS middleware config — replace with your frontend URL

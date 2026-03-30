@@ -70,16 +70,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Skip authentication for public operations (e.g., LoginUser)
-		if operationName == "LoginUser" || strings.Contains(gqlRequest.Query, "mutation LoginUser") {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Check if the operation requires a specific role
-		requiredRole, isProtected := OperationRoleConfig[operationName]
-		if !isProtected {
-			// If the operation is not in the role config, allow it (public operation)
+		// Skip authentication for public operations
+		if operationName == "LoginUser" || operationName == "Register" || operationName == "CreateUser" || operationName == "VerifyEmail" ||
+			strings.Contains(gqlRequest.Query, "mutation LoginUser") ||
+			strings.Contains(gqlRequest.Query, "mutation Register") ||
+			strings.Contains(gqlRequest.Query, "mutation CreateUser") ||
+			strings.Contains(gqlRequest.Query, "mutation VerifyEmail") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -98,10 +94,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check if the user has the required role
-		if role != requiredRole {
-			respondWithJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden: insufficient role"})
-			return
+		// Check if the user has the required role (only when configured)
+		if requiredRole, isProtected := OperationRoleConfig[operationName]; isProtected {
+			if role != requiredRole {
+				respondWithJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden: insufficient role"})
+				return
+			}
 		}
 
 		// Add user_id and role to context
