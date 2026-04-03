@@ -908,6 +908,12 @@ type RTCSignal {
   senderId: Int!
 }
 
+type VideoSessionSignal {
+  signal: String!
+  type: String!
+  senderId: Int!
+}
+
 type Notification {
   id: ID!
   title: String!
@@ -1102,6 +1108,7 @@ type Subscription {
   messageSent(chatID:ID!):Message!
   newNotification: String!
   rtcSignalSent(chatID:ID!): RTCSignal!
+  videoSessionSignalSent(sessionId: ID!): VideoSessionSignal!
   auditLogCreated: AuditLog!
 }
 
@@ -1129,7 +1136,8 @@ type Mutation {
  CreateChat(participantID: Int!): Chat!
  FlagTarget(targetType: String!, targetID: String!, reason: String!): Flag!
   ResolveFlag(flagID: ID!, action: String!, notes: String): Boolean!
- SendRTCSignal(chatID: ID!, signal: String!, typeArg: String!): Boolean!
+SendRTCSignal(chatID: ID!, signal: String!, typeArg: String!): Boolean!
+  SendVideoSessionSignal(sessionId: ID!, signal: String!, typeArg: String!): Boolean!
  GenerateSecureJobLink(jobID: ID!): String!
  VerifySecureJobLink(token: String!): JobOffer!
   CreateNotification(userId: ID!, title: String!, content: String!, type: NotificationType = TRANSACTIONAL, priority: NotificationPriority = NORMAL, actionUrl: String, expiresAt: DateTime): Notification!

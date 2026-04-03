@@ -982,6 +982,12 @@ type VideoSessionParticipant struct {
 	JoinedAt  *string `json:"joinedAt,omitempty"`
 }
 
+type VideoSessionSignal struct {
+	Signal   string `json:"signal"`
+	Type     string `json:"type"`
+	SenderID int32  `json:"senderId"`
+}
+
 type VideoSessionStatusInput struct {
 	Status string `json:"status"`
 }

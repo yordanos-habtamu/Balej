@@ -364,6 +364,7 @@ type ComplexityRoot struct {
 		SendMessage                    func(childComplexity int, chatID string, content string, senderID int32, recieverID int32) int
 		SendNewsletterNow              func(childComplexity int, id string) int
 		SendRTCSignal                  func(childComplexity int, chatID string, signal string, typeArg string) int
+		SendVideoSessionSignal         func(childComplexity int, sessionID string, signal string, typeArg string) int
 		SetDefaultBillingPaymentMethod func(childComplexity int, id string) int
 		SetProjectPublic               func(childComplexity int, id string, isPublic bool) int
 		SetRolePermissions             func(childComplexity int, roleID string, permissionIds []string) int
@@ -707,10 +708,11 @@ type ComplexityRoot struct {
 	}
 
 	Subscription struct {
-		AuditLogCreated func(childComplexity int) int
-		MessageSent     func(childComplexity int, chatID string) int
-		NewNotification func(childComplexity int) int
-		RtcSignalSent   func(childComplexity int, chatID string) int
+		AuditLogCreated        func(childComplexity int) int
+		MessageSent            func(childComplexity int, chatID string) int
+		NewNotification        func(childComplexity int) int
+		RtcSignalSent          func(childComplexity int, chatID string) int
+		VideoSessionSignalSent func(childComplexity int, sessionID string) int
 	}
 
 	TalentProfile struct {
@@ -779,6 +781,12 @@ type ComplexityRoot struct {
 		UserID    func(childComplexity int) int
 	}
 
+	VideoSessionSignal struct {
+		SenderID func(childComplexity int) int
+		Signal   func(childComplexity int) int
+		Type     func(childComplexity int) int
+	}
+
 	WorkSample struct {
 		Description  func(childComplexity int) int
 		DisplayOrder func(childComplexity int) int
@@ -815,6 +823,7 @@ type MutationResolver interface {
 	FlagTarget(ctx context.Context, targetType string, targetID string, reason string) (*model.Flag, error)
 	ResolveFlag(ctx context.Context, flagID string, action string, notes *string) (bool, error)
 	SendRTCSignal(ctx context.Context, chatID string, signal string, typeArg string) (bool, error)
+	SendVideoSessionSignal(ctx context.Context, sessionID string, signal string, typeArg string) (bool, error)
 	GenerateSecureJobLink(ctx context.Context, jobID string) (string, error)
 	VerifySecureJobLink(ctx context.Context, token string) (*model.JobOffer, error)
 	CreateNotification(ctx context.Context, userID string, title string, content string, typeArg *model.NotificationType, priority *model.NotificationPriority, actionURL *string, expiresAt *string) (*model.Notification, error)
@@ -974,6 +983,7 @@ type SubscriptionResolver interface {
 	MessageSent(ctx context.Context, chatID string) (<-chan *model.Message, error)
 	NewNotification(ctx context.Context) (<-chan string, error)
 	RtcSignalSent(ctx context.Context, chatID string) (<-chan *model.RTCSignal, error)
+	VideoSessionSignalSent(ctx context.Context, sessionID string) (<-chan *model.VideoSessionSignal, error)
 	AuditLogCreated(ctx context.Context) (<-chan *model.AuditLog, error)
 }
 
@@ -2773,6 +2783,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.SendRTCSignal(childComplexity, args["chatID"].(string), args["signal"].(string), args["typeArg"].(string)), true
+	case "Mutation.SendVideoSessionSignal":
+		if e.ComplexityRoot.Mutation.SendVideoSessionSignal == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_SendVideoSessionSignal_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SendVideoSessionSignal(childComplexity, args["sessionId"].(string), args["signal"].(string), args["typeArg"].(string)), true
 	case "Mutation.SetDefaultBillingPaymentMethod":
 		if e.ComplexityRoot.Mutation.SetDefaultBillingPaymentMethod == nil {
 			break
@@ -4792,6 +4813,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Subscription.RtcSignalSent(childComplexity, args["chatID"].(string)), true
+	case "Subscription.videoSessionSignalSent":
+		if e.ComplexityRoot.Subscription.VideoSessionSignalSent == nil {
+			break
+		}
+
+		args, err := ec.field_Subscription_videoSessionSignalSent_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Subscription.VideoSessionSignalSent(childComplexity, args["sessionId"].(string)), true
 
 	case "TalentProfile.bio":
 		if e.ComplexityRoot.TalentProfile.Bio == nil {
@@ -5103,6 +5135,25 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.VideoSessionParticipant.UserID(childComplexity), true
+
+	case "VideoSessionSignal.senderId":
+		if e.ComplexityRoot.VideoSessionSignal.SenderID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.VideoSessionSignal.SenderID(childComplexity), true
+	case "VideoSessionSignal.signal":
+		if e.ComplexityRoot.VideoSessionSignal.Signal == nil {
+			break
+		}
+
+		return e.ComplexityRoot.VideoSessionSignal.Signal(childComplexity), true
+	case "VideoSessionSignal.type":
+		if e.ComplexityRoot.VideoSessionSignal.Type == nil {
+			break
+		}
+
+		return e.ComplexityRoot.VideoSessionSignal.Type(childComplexity), true
 
 	case "WorkSample.description":
 		if e.ComplexityRoot.WorkSample.Description == nil {
@@ -6157,6 +6208,27 @@ func (ec *executionContext) field_Mutation_SendRTCSignal_args(ctx context.Contex
 		return nil, err
 	}
 	args["chatID"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "signal", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["signal"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "typeArg", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["typeArg"] = arg2
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_SendVideoSessionSignal_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "sessionId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["sessionId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "signal", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
@@ -7283,6 +7355,17 @@ func (ec *executionContext) field_Subscription_rtcSignalSent_args(ctx context.Co
 		return nil, err
 	}
 	args["chatID"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Subscription_videoSessionSignalSent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "sessionId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["sessionId"] = arg0
 	return args, nil
 }
 
@@ -13666,6 +13749,47 @@ func (ec *executionContext) fieldContext_Mutation_SendRTCSignal(ctx context.Cont
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_SendRTCSignal_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_SendVideoSessionSignal(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_SendVideoSessionSignal,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SendVideoSessionSignal(ctx, fc.Args["sessionId"].(string), fc.Args["signal"].(string), fc.Args["typeArg"].(string))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_SendVideoSessionSignal(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_SendVideoSessionSignal_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -26883,6 +27007,55 @@ func (ec *executionContext) fieldContext_Subscription_rtcSignalSent(ctx context.
 	return fc, nil
 }
 
+func (ec *executionContext) _Subscription_videoSessionSignalSent(ctx context.Context, field graphql.CollectedField) (ret func(ctx context.Context) graphql.Marshaler) {
+	return graphql.ResolveFieldStream(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Subscription_videoSessionSignalSent,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Subscription().VideoSessionSignalSent(ctx, fc.Args["sessionId"].(string))
+		},
+		nil,
+		ec.marshalNVideoSessionSignal2ᚖgithubᚗcomᚋyordanosᚑhabtamuᚋGormWithGraphqlᚋgraphᚋmodelᚐVideoSessionSignal,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Subscription_videoSessionSignalSent(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Subscription",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "signal":
+				return ec.fieldContext_VideoSessionSignal_signal(ctx, field)
+			case "type":
+				return ec.fieldContext_VideoSessionSignal_type(ctx, field)
+			case "senderId":
+				return ec.fieldContext_VideoSessionSignal_senderId(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type VideoSessionSignal", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Subscription_videoSessionSignalSent_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Subscription_auditLogCreated(ctx context.Context, field graphql.CollectedField) (ret func(ctx context.Context) graphql.Marshaler) {
 	return graphql.ResolveFieldStream(
 		ctx,
@@ -28444,6 +28617,93 @@ func (ec *executionContext) fieldContext_VideoSessionParticipant_joinedAt(_ cont
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type DateTime does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _VideoSessionSignal_signal(ctx context.Context, field graphql.CollectedField, obj *model.VideoSessionSignal) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_VideoSessionSignal_signal,
+		func(ctx context.Context) (any, error) {
+			return obj.Signal, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_VideoSessionSignal_signal(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "VideoSessionSignal",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _VideoSessionSignal_type(ctx context.Context, field graphql.CollectedField, obj *model.VideoSessionSignal) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_VideoSessionSignal_type,
+		func(ctx context.Context) (any, error) {
+			return obj.Type, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_VideoSessionSignal_type(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "VideoSessionSignal",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _VideoSessionSignal_senderId(ctx context.Context, field graphql.CollectedField, obj *model.VideoSessionSignal) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_VideoSessionSignal_senderId,
+		func(ctx context.Context) (any, error) {
+			return obj.SenderID, nil
+		},
+		nil,
+		ec.marshalNInt2int32,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_VideoSessionSignal_senderId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "VideoSessionSignal",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
@@ -35239,6 +35499,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "SendVideoSessionSignal":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_SendVideoSessionSignal(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "GenerateSecureJobLink":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_GenerateSecureJobLink(ctx, field)
@@ -38896,6 +39163,8 @@ func (ec *executionContext) _Subscription(ctx context.Context, sel ast.Selection
 		return ec._Subscription_newNotification(ctx, fields[0])
 	case "rtcSignalSent":
 		return ec._Subscription_rtcSignalSent(ctx, fields[0])
+	case "videoSessionSignalSent":
+		return ec._Subscription_videoSessionSignalSent(ctx, fields[0])
 	case "auditLogCreated":
 		return ec._Subscription_auditLogCreated(ctx, fields[0])
 	default:
@@ -39254,6 +39523,55 @@ func (ec *executionContext) _VideoSessionParticipant(ctx context.Context, sel as
 			}
 		case "joinedAt":
 			out.Values[i] = ec._VideoSessionParticipant_joinedAt(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var videoSessionSignalImplementors = []string{"VideoSessionSignal"}
+
+func (ec *executionContext) _VideoSessionSignal(ctx context.Context, sel ast.SelectionSet, obj *model.VideoSessionSignal) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, videoSessionSignalImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("VideoSessionSignal")
+		case "signal":
+			out.Values[i] = ec._VideoSessionSignal_signal(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "type":
+			out.Values[i] = ec._VideoSessionSignal_type(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "senderId":
+			out.Values[i] = ec._VideoSessionSignal_senderId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -41650,6 +41968,20 @@ func (ec *executionContext) marshalNVideoSessionParticipant2ᚖgithubᚗcomᚋyo
 		return graphql.Null
 	}
 	return ec._VideoSessionParticipant(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNVideoSessionSignal2githubᚗcomᚋyordanosᚑhabtamuᚋGormWithGraphqlᚋgraphᚋmodelᚐVideoSessionSignal(ctx context.Context, sel ast.SelectionSet, v model.VideoSessionSignal) graphql.Marshaler {
+	return ec._VideoSessionSignal(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNVideoSessionSignal2ᚖgithubᚗcomᚋyordanosᚑhabtamuᚋGormWithGraphqlᚋgraphᚋmodelᚐVideoSessionSignal(ctx context.Context, sel ast.SelectionSet, v *model.VideoSessionSignal) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._VideoSessionSignal(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNVideoSessionStatusInput2githubᚗcomᚋyordanosᚑhabtamuᚋGormWithGraphqlᚋgraphᚋmodelᚐVideoSessionStatusInput(ctx context.Context, v any) (model.VideoSessionStatusInput, error) {

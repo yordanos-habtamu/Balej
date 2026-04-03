@@ -2980,6 +2980,23 @@ func (r *mutationResolver) SendRTCSignal(ctx context.Context, chatID string, sig
 	return true, nil
 }
 
+// SendVideoSessionSignal is the resolver for the SendVideoSessionSignal field.
+func (r *mutationResolver) SendVideoSessionSignal(ctx context.Context, sessionID string, signal string, typeArg string) (bool, error) {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	videoSignal := &model.VideoSessionSignal{
+		Signal:   signal,
+		Type:     typeArg,
+		SenderID: int32(userID),
+	}
+
+	r.PubSub.Publish("video:"+sessionID, videoSignal)
+	return true, nil
+}
+
 // RtcSignalSent is the resolver for the rtcSignalSent field.
 func (r *subscriptionResolver) RtcSignalSent(ctx context.Context, chatID string) (<-chan *model.RTCSignal, error) {
 	signalChan := make(chan *model.RTCSignal, 1)
@@ -3002,6 +3019,35 @@ func (r *subscriptionResolver) RtcSignalSent(ctx context.Context, chatID string)
 	}()
 
 	err := r.PubSub.Subscribe("rtc:"+chatID, genChan)
+	if err != nil {
+		return nil, err
+	}
+
+	return signalChan, nil
+}
+
+// VideoSessionSignalSent is the resolver for the videoSessionSignalSent field.
+func (r *subscriptionResolver) VideoSessionSignalSent(ctx context.Context, sessionID string) (<-chan *model.VideoSessionSignal, error) {
+	signalChan := make(chan *model.VideoSessionSignal, 1)
+	genChan := make(chan interface{}, 1)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data, ok := <-genChan:
+				if !ok {
+					return
+				}
+				if s, ok := data.(*model.VideoSessionSignal); ok {
+					signalChan <- s
+				}
+			}
+		}
+	}()
+
+	err := r.PubSub.Subscribe("video:"+sessionID, genChan)
 	if err != nil {
 		return nil, err
 	}
